@@ -995,6 +995,12 @@ function renderTrendChart(data) {
     return;
   }
 
+  // Subtitle hint
+  if (trendMode === 'course') {
+    document.getElementById('trend-subtitle').textContent =
+      `강의 시작 기준 ${filters.period==='month'?'월별':'주별'} 평균 ${metricLabel(metric)} · 강의 이름 클릭해 개별 추이 확인`;
+  }
+
   // Deploy event vertical lines
   const notes = getNotes().sort((a,b) => a.date < b.date ? -1 : 1);
   const deployAtLabel = {};
@@ -1036,7 +1042,7 @@ function renderTrendChart(data) {
         label: c,
         data: labels.map(l => { const arr = groups[l].byCourse[c]||[]; return arr.length ? avg(arr.map(r=>r[metric])) : null; }),
         borderColor: color, borderWidth: 1.5, pointRadius: 3, pointHoverRadius: 5,
-        backgroundColor: color + '14', tension: 0.3, fill: false, spanGaps: false, order: 1,
+        backgroundColor: color + '14', tension: 0.3, fill: false, spanGaps: false, order: 1, hidden: true,
       });
     });
   }
@@ -1060,14 +1066,13 @@ function renderTrendChart(data) {
         ctx.setLineDash([4, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(249,115,22,0.9)';
-        ctx.font = 'bold 10px Pretendard, sans-serif';
-        ctx.textAlign = 'left';
-        const label = '🚀 ' + (titles[0].length > 10 ? titles[0].slice(0,9)+'…' : titles[0]);
         ctx.save();
-        ctx.translate(x + 4, yScale.top + 10);
+        ctx.translate(x + 14, yScale.bottom - 10);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText(label, 0, 0);
+        ctx.fillStyle = 'rgba(249,115,22,0.92)';
+        ctx.font = 'bold 12px Pretendard, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🚀 ' + titles.join(' · '), 0, 0);
         ctx.restore();
         ctx.restore();
       });
@@ -1081,11 +1086,16 @@ function renderTrendChart(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 72, right: 20, bottom: 8, left: 8 } },
+      layout: { padding: { top: 16, right: 20, bottom: 8, left: 8 } },
+      onHover: (event, activeElements) => {
+        const el = event.native?.target;
+        if (el) el.style.cursor = activeElements.length ? 'pointer' : '';
+      },
       plugins: {
         legend: {
           display: true, position: 'top',
-          labels: { font: { size: 12 }, boxWidth: 22, padding: 16, usePointStyle: true },
+          labels: { font: { size: 13 }, boxWidth: 28, padding: 24, usePointStyle: true, pointStyleWidth: 18 },
+          afterFit: function(legend) { legend.height += 24; },
           onClick: (e, legendItem, legend) => {
             const clickedIdx = legendItem.datasetIndex;
             const chart = legend.chart;
@@ -1095,13 +1105,10 @@ function renderTrendChart(data) {
               const m = chart.getDatasetMeta(0);
               m.hidden = !m.hidden;
             } else {
-              // 이미 이 강의만 보이는 상태면 전체 복원, 아니면 격리
-              const otherVisible = ds.some((_, i) => i > 0 && i !== clickedIdx && !chart.getDatasetMeta(i).hidden);
-              if (!otherVisible) {
-                ds.forEach((_, i) => { chart.getDatasetMeta(i).hidden = false; });
-              } else {
-                ds.forEach((_, i) => { if (i > 0) chart.getDatasetMeta(i).hidden = (i !== clickedIdx); });
-              }
+              // 현재 이 강의가 표시 중이면 숨김 (평균만 남김), 숨겨져 있으면 이 강의만 표시
+              const wasHidden = chart.getDatasetMeta(clickedIdx).hidden;
+              ds.forEach((_, i) => { if (i > 0) chart.getDatasetMeta(i).hidden = true; });
+              if (wasHidden) chart.getDatasetMeta(clickedIdx).hidden = false;
             }
             chart.update();
           }
