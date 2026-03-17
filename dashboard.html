@@ -306,6 +306,12 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 .vs-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 3px; min-width: 20px; text-align: center; }
 .vs-before { background: #F1F5F9; color: #94A3B8; }
 .vs-after { background: rgba(0,53,102,0.1); color: #003566; }
+/* ── Trend HTML Legend ── */
+.trend-legend { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 20px; padding: 0 2px; }
+.trend-legend-item { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.13s, opacity 0.13s; user-select: none; color: #1E293B; }
+.trend-legend-item:hover { background: #F1F5F9; }
+.trend-legend-item.tl-hidden { opacity: 0.35; }
+
 /* ── AI Insight button ── */
 .btn-ai-insight { background: #003566; color: white; border: none; border-radius: 6px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; font-family: inherit; white-space: nowrap; }
 .btn-ai-insight:hover { background: #0057A8; }
@@ -442,6 +448,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
           </div>
         </div>
         <div class="section-body" style="padding-top:10px;">
+          <div id="trend-legend" class="trend-legend"></div>
           <div id="trend-chart-wrap" style="position:relative;height:480px;"><canvas id="trend-chart"></canvas></div>
           <div id="trend-table" class="trend-table-wrap" style="display:none;"></div>
         </div>
@@ -459,13 +466,15 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
         <div class="section-body">
           <div class="corr-layout">
             <div class="corr-chart" id="course-chart-wrap"><canvas id="course-chart"></canvas></div>
-            <div class="corr-table-wrap" id="corr-table-wrap">
-              <div style="color:#94A3B8;font-size:13px;text-align:center;padding:40px 0;">데이터 로딩 중...</div>
+            <div>
+              <div class="corr-table-wrap" id="corr-table-wrap">
+                <div style="color:#94A3B8;font-size:13px;text-align:center;padding:40px 0;">데이터 로딩 중...</div>
+              </div>
+              <div id="course-insight" style="display:none;margin-top:14px;" class="insight-box">
+                <div class="insight-label">✦ AI 인사이트</div>
+                <div id="course-insight-text" style="font-size:12px;line-height:1.9;"></div>
+              </div>
             </div>
-          </div>
-          <div id="course-insight" style="display:none;" class="insight-box">
-            <div class="insight-label">✦ AI 인사이트</div>
-            <div id="course-insight-text"></div>
           </div>
         </div>
       </div>
@@ -822,6 +831,8 @@ function setTrendView(view) {
   document.getElementById('view-table').classList.toggle('active', view === 'table');
   document.getElementById('trend-chart-wrap').style.display = view === 'chart' ? '' : 'none';
   document.getElementById('trend-table').style.display = view === 'table' ? '' : 'none';
+  const leg = document.getElementById('trend-legend');
+  if (leg) leg.style.display = view === 'chart' ? '' : 'none';
   if (view === 'chart') renderTrendChart(getFiltered());
 }
 
@@ -1081,6 +1092,9 @@ function renderTrendChart(data) {
     }
   };
 
+  const legendEl = document.getElementById('trend-legend');
+  if (legendEl) legendEl.innerHTML = '';
+
   trendChart = new Chart(document.getElementById('trend-chart'), {
     type: 'line',
     plugins: [deployLinesPlugin],
@@ -1088,28 +1102,13 @@ function renderTrendChart(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 16, right: 20, bottom: 8, left: 8 } },
-      onHover: (event, activeElements, chart) => {
+      layout: { padding: { top: 8, right: 20, bottom: 8, left: 8 } },
+      onHover: (event, activeElements) => {
         const el = event.native?.target;
-        if (!el) return;
-        const mx = event.native?.offsetX ?? 0, my = event.native?.offsetY ?? 0;
-        const leg = chart.legend;
-        const overLegend = leg && mx >= leg.left && mx <= leg.left + leg.width && my >= leg.top && my <= leg.top + leg.height;
-        el.style.cursor = (activeElements.length > 0 || overLegend) ? 'pointer' : 'default';
+        if (el) el.style.cursor = activeElements.length ? 'pointer' : 'default';
       },
       plugins: {
-        legend: {
-          display: true, position: 'top',
-          labels: { font: { size: 13 }, boxWidth: 28, padding: 24, usePointStyle: true, pointStyleWidth: 18 },
-          afterFit: function(legend) { legend.height += 24; },
-          onClick: (e, legendItem, legend) => {
-            const clickedIdx = legendItem.datasetIndex;
-            const chart = legend.chart;
-            const meta = chart.getDatasetMeta(clickedIdx);
-            meta.hidden = !meta.hidden;
-            chart.update();
-          }
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: ctx => ctx[0]?.label || '',
@@ -1131,6 +1130,33 @@ function renderTrendChart(data) {
       }
     }
   });
+
+  renderTrendLegend(trendChart);
+}
+
+function renderTrendLegend(chart) {
+  const el = document.getElementById('trend-legend');
+  if (!el) return;
+  const ds = chart.data.datasets;
+  el.innerHTML = ds.map((d, i) => {
+    const hidden = !!chart.getDatasetMeta(i).hidden;
+    const color = typeof d.borderColor === 'string' ? d.borderColor : '#94A3B8';
+    const isDashed = Array.isArray(d.borderDash) && d.borderDash.length;
+    const lineEl = isDashed
+      ? `<span style="width:22px;height:0;border-top:2.5px dashed ${color};display:inline-block;flex-shrink:0;"></span>`
+      : `<span style="width:22px;height:2.5px;background:${color};border-radius:2px;display:inline-block;flex-shrink:0;"></span>`;
+    return `<span class="trend-legend-item${hidden ? ' tl-hidden' : ''}" onclick="onTrendLegendClick(${i})">
+      ${lineEl}<span>${d.label}</span>
+    </span>`;
+  }).join('');
+}
+
+function onTrendLegendClick(idx) {
+  if (!trendChart) return;
+  const meta = trendChart.getDatasetMeta(idx);
+  meta.hidden = !meta.hidden;
+  trendChart.update();
+  renderTrendLegend(trendChart);
 }
 
 // ════════════════════════════════════
@@ -1341,24 +1367,25 @@ async function generateAIInsight() {
   const dataStr = points.map(p => `- ${p.course}: ${metricLabel(metric)} ${fmtH(p.lt)}, 수료율 ${p.cr.toFixed(1)}% (수강생 ${p.n}명, 수료대상 ${p.ended}명)`).join('\n');
   const sorted = [...points].sort((a,b)=>a.lt-b.lt);
   const byCR = [...points].sort((a,b)=>b.cr-a.cr);
-  const prompt = `당신은 온라인 교육 플랫폼의 데이터 분석가입니다. 아래는 강의별 수강 속도(리드타임)와 수료율 데이터입니다.
+  const prompt = `당신은 온라인 교육 플랫폼의 PM을 보조하는 데이터 분석가입니다. 아래는 강의별 수강 속도(리드타임)와 수료율 데이터입니다.
 
 【지표】${metricLabel(metric)} (수강 시작 후 이수까지 걸린 평균 시간)
 【데이터】
 ${dataStr}
 
 【참고】
-- 가장 빠른 강의: ${sorted[0]?.course} (${fmtH(sorted[0]?.lt)})
-- 가장 느린 강의: ${sorted[sorted.length-1]?.course} (${fmtH(sorted[sorted.length-1]?.lt)})
+- 리드타임 최단: ${sorted[0]?.course} (${fmtH(sorted[0]?.lt)})
+- 리드타임 최장: ${sorted[sorted.length-1]?.course} (${fmtH(sorted[sorted.length-1]?.lt)})
 - 수료율 최고: ${byCR[0]?.course} (${byCR[0]?.cr.toFixed(1)}%)
 - 수료율 최저: ${byCR[byCR.length-1]?.course} (${byCR[byCR.length-1]?.cr.toFixed(1)}%)
 
-이 데이터를 분석하여 다음을 한국어로 3문장 이내로 작성해주세요:
-1. 수강 속도와 수료율 간 주요 패턴 또는 상관관계
-2. 주목할 만한 이상치나 강의 특성
-3. 수료율 개선을 위한 구체적이고 실행 가능한 제언
+이 데이터를 바탕으로 아래 관점에서 한국어로 분석해주세요:
 
-마크다운 없이 자연스러운 문장으로만 작성해주세요.`;
+1. 수강 속도(리드타임)와 수료율 사이의 상관관계 패턴 — 어떤 방향성이 보이는지, 패턴에서 벗어나는 강의는 무엇인지
+2. 이 상관관계가 단순 인과가 아닐 수 있는 이유 — 수강 대상 특성, 수강 환경, 강의 운영 방식, 시즌·시장 요인 등 담당자가 고려해볼 외부 변수
+3. 담당자가 추가로 확인해볼 만한 데이터 포인트 또는 검증 가설 (강의 콘텐츠 품질에 대한 해석은 제외)
+
+강의명은 반드시 <>로 감싸서 표기해주세요. 마크다운 없이 자연스러운 문장으로 작성해주세요.`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1371,7 +1398,7 @@ ${dataStr}
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
+        max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }]
       })
     });
