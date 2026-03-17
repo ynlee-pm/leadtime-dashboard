@@ -589,7 +589,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 // ════════════════════════════════════
 // ── 배포 전 여기에 URL을 직접 입력하세요 ──────────────────────────────
 const DEFAULT_GAS_URL    = '';  // Google Apps Script URL (스프레드시트 데이터 소스)
-const DEFAULT_WORKER_URL = '';  // Cloudflare Worker URL (AI 인사이트 프록시)
+const DEFAULT_WORKER_URL = 'https://leadtime-dashboard.yn-lee.workers.dev';
 // ────────────────────────────────────────────────────────────────────
 const SHEET_ID  = '101oIzi_iNX4cSMrfq-va4T2mJRWxroyYweCgJDbhU2k';
 const SHEET_GID = '1599933316';
@@ -1388,22 +1388,9 @@ ${dataStr}
 - 줄바꿈을 적절히 사용할 것`;
 
   try {
-    const useWorker = !!(localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL);
-    const endpoint = useWorker
-      ? (localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL)
-      : 'https://api.anthropic.com/v1/messages';
-    const headers = useWorker
-      ? { 'Content-Type': 'application/json' }
-      : {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        };
-
-    const res = await fetch(endpoint, {
+    const res = await fetch(DEFAULT_WORKER_URL, {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
