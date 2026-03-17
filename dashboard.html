@@ -483,9 +483,11 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
                 <th colspan="2">1-1강 이수 (시간)</th>
                 <th colspan="2">1챕터 완료 (시간)</th>
                 <th colspan="2">2-1강 이수 (시간)</th>
+                <th colspan="2">2챕터 완료 (시간)</th>
                 <th colspan="2">수료율 <small style="font-weight:400;">(수강기간 종료 기준)</small></th>
               </tr>
               <tr>
+                <th class="cs">시니어</th><th class="cns">비시니어</th>
                 <th class="cs">시니어</th><th class="cns">비시니어</th>
                 <th class="cs">시니어</th><th class="cns">비시니어</th>
                 <th class="cs">시니어</th><th class="cns">비시니어</th>
@@ -1087,9 +1089,13 @@ function renderTrendChart(data) {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       layout: { padding: { top: 16, right: 20, bottom: 8, left: 8 } },
-      onHover: (event, activeElements) => {
+      onHover: (event, activeElements, chart) => {
         const el = event.native?.target;
-        if (el) el.style.cursor = activeElements.length ? 'pointer' : '';
+        if (!el) return;
+        const mx = event.native?.offsetX ?? 0, my = event.native?.offsetY ?? 0;
+        const leg = chart.legend;
+        const overLegend = leg && mx >= leg.left && mx <= leg.left + leg.width && my >= leg.top && my <= leg.top + leg.height;
+        el.style.cursor = (activeElements.length > 0 || overLegend) ? 'pointer' : 'default';
       },
       plugins: {
         legend: {
@@ -1099,17 +1105,8 @@ function renderTrendChart(data) {
           onClick: (e, legendItem, legend) => {
             const clickedIdx = legendItem.datasetIndex;
             const chart = legend.chart;
-            const ds = chart.data.datasets;
-            if (clickedIdx === 0) {
-              // 평균선 toggle
-              const m = chart.getDatasetMeta(0);
-              m.hidden = !m.hidden;
-            } else {
-              // 현재 이 강의가 표시 중이면 숨김 (평균만 남김), 숨겨져 있으면 이 강의만 표시
-              const wasHidden = chart.getDatasetMeta(clickedIdx).hidden;
-              ds.forEach((_, i) => { if (i > 0) chart.getDatasetMeta(i).hidden = true; });
-              if (wasHidden) chart.getDatasetMeta(clickedIdx).hidden = false;
-            }
+            const meta = chart.getDatasetMeta(clickedIdx);
+            meta.hidden = !meta.hidden;
             chart.update();
           }
         },
@@ -1418,12 +1415,14 @@ function renderCourseTable(data) {
       <td class="cns">${fmtH(avg(ns.map(r=>r.lt_ch1)))}</td>
       <td class="cs">${fmtH(avg(s.map(r=>r.lt_21)))}</td>
       <td class="cns">${fmtH(avg(ns.map(r=>r.lt_21)))}</td>
+      <td class="cs">${fmtH(avg(s.map(r=>r.lt_ch2)))}</td>
+      <td class="cns">${fmtH(avg(ns.map(r=>r.lt_ch2)))}</td>
       <td class="cs cgood">${cr(els)}</td>
       <td class="cns cgood">${cr(elns)}</td>
     </tr>`;
   }).join('');
   document.getElementById('course-tbody').innerHTML = html ||
-    '<tr><td colspan="12" style="text-align:center;color:#94A3B8;padding:20px;">데이터가 없습니다</td></tr>';
+    '<tr><td colspan="14" style="text-align:center;color:#94A3B8;padding:20px;">데이터가 없습니다</td></tr>';
 }
 
 // ════════════════════════════════════
