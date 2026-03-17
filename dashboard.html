@@ -338,7 +338,17 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
                 <button class="btn-save-url" onclick="saveAndRefreshHdr()">저장·갱신</button>
               </div>
               <div class="sp-msg" id="hdr-url-msg"></div>
-              <div class="sp-label" style="margin-top:12px;border-top:1px solid #F1F5F9;padding-top:12px;">Anthropic API Key <span style="font-weight:400;color:#94A3B8;">(AI 인사이트용)</span></div>
+              <div class="sp-label" style="margin-top:12px;border-top:1px solid #F1F5F9;padding-top:12px;">
+                AI 프록시 Worker URL <span style="font-weight:400;color:#059669;">● 권장</span>
+              </div>
+              <div class="sp-row">
+                <input type="text" id="worker-url-hdr" placeholder="https://leadtime-ai-proxy.xxx.workers.dev">
+                <button class="btn-save-url" onclick="saveWorkerUrl()">저장</button>
+              </div>
+              <div class="sp-msg" id="hdr-worker-msg"></div>
+              <div class="sp-label" style="margin-top:10px;">
+                Anthropic API Key <span style="font-weight:400;color:#94A3B8;">(Worker 미설정 시 직접 사용)</span>
+              </div>
               <div class="sp-row">
                 <input type="password" id="ai-key-hdr" placeholder="sk-ant-...">
                 <button class="btn-save-url" onclick="saveAIKey()">저장</button>
@@ -620,7 +630,11 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 // Constants
 // 팀 공유 배포 시 DEFAULT_GAS_URL에 GAS URL을 넣으면 모든 사용자에게 자동 적용됩니다.
 // ════════════════════════════════════
-const DEFAULT_GAS_URL = '';
+const DEFAULT_GAS_URL    = '';
+// Cloudflare Worker URL — 배포 후 여기에 입력 (팀 공유용)
+// 예: 'https://leadtime-ai-proxy.yourname.workers.dev'
+const DEFAULT_WORKER_URL = '';
+const WORKER_URL_KEY     = 'sc_worker_url';
 const SHEET_ID  = '101oIzi_iNX4cSMrfq-va4T2mJRWxroyYweCgJDbhU2k';
 const SHEET_GID = '1599933316';
 const NOTES_KEY = 'sc_leadtime_notes_v2';
@@ -1360,9 +1374,10 @@ async function generateAIInsight() {
   const insightEl = document.getElementById('course-insight');
   const insightTextEl = document.getElementById('course-insight-text');
 
-  if (!apiKey) {
+  const workerUrl = localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL;
+  if (!workerUrl && !apiKey) {
     insightEl.style.display = 'block';
-    insightTextEl.innerHTML = '<span style="color:#94A3B8;">API 키가 없습니다. 우측 상단 ⚙️ URL 버튼에서 Anthropic API 키를 설정해주세요.</span>';
+    insightTextEl.innerHTML = '<span style="color:#94A3B8;">⚙️ URL 설정에서 Worker URL 또는 Anthropic API 키를 입력해주세요.</span>';
     return;
   }
 
@@ -1419,14 +1434,22 @@ ${dataStr}
 - 줄바꿈을 적절히 사용할 것`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const useWorker = !!(localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL);
+    const endpoint = useWorker
+      ? (localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL)
+      : 'https://api.anthropic.com/v1/messages';
+    const headers = useWorker
+      ? { 'Content-Type': 'application/json' }
+      : {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        };
+
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers,
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
@@ -1949,6 +1972,11 @@ function toggleHdrSettings() {
   const saved = localStorage.getItem(GAS_URL_KEY) || DEFAULT_GAS_URL || '';
   document.getElementById('gas-url-hdr').value = saved;
   document.getElementById('hdr-url-msg').textContent = '';
+  const savedWorker = localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL || '';
+  const workerEl = document.getElementById('worker-url-hdr');
+  workerEl.value = '';
+  workerEl.placeholder = savedWorker ? '저장됨: ' + savedWorker.slice(0, 40) + '…' : 'https://leadtime-ai-proxy.xxx.workers.dev';
+  document.getElementById('hdr-worker-msg').textContent = '';
   const hasAIKey = !!localStorage.getItem('sc_ai_key');
   const aiKeyEl = document.getElementById('ai-key-hdr');
   aiKeyEl.value = '';
@@ -1964,6 +1992,17 @@ function saveAndRefreshHdr() {
   document.getElementById('hdr-url-msg').textContent = '✅ 저장됨. 새로고침 중...';
   setTimeout(() => { document.getElementById('hdr-settings-panel').style.display = 'none'; }, 600);
   refreshData();
+}
+
+function saveWorkerUrl() {
+  const url = document.getElementById('worker-url-hdr').value.trim();
+  if (!url) return;
+  localStorage.setItem(WORKER_URL_KEY, url);
+  const msg = document.getElementById('hdr-worker-msg');
+  msg.textContent = '✅ Worker URL 저장됨';
+  document.getElementById('worker-url-hdr').value = '';
+  document.getElementById('worker-url-hdr').placeholder = '저장됨: ' + url.slice(0, 40) + '…';
+  setTimeout(() => { msg.textContent = ''; }, 3000);
 }
 
 function saveAIKey() {
