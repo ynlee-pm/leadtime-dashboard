@@ -71,6 +71,8 @@ details[open] .gas-guide summary::after { content: '▴'; }
 .btn-group button { border: none; padding: 5px 11px; font-size: 12px; background: white; cursor: pointer; color: #64748B; transition: all 0.15s; font-weight: 500; border-right: 1px solid #D8DCE0; }
 .btn-group button:last-child { border-right: none; }
 .btn-group button.active { background: #FA0030; color: white; }
+.filter-select { border: 1px solid #D8DCE0; border-radius: 6px; padding: 5px 28px 5px 10px; font-size: 12px; font-weight: 500; color: #475569; background: white; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394A3B8'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; cursor: pointer; font-family: inherit; height: 30px; }
+.filter-select:focus { outline: none; border-color: #FA0030; box-shadow: 0 0 0 3px rgba(250,0,48,0.08); }
 .btn-group button:hover:not(.active) { background: #F8FAFC; }
 
 /* Date range */
@@ -376,11 +378,11 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
         <!-- 대상 -->
         <div class="filter-group">
           <span class="filter-label">대상</span>
-          <div class="btn-group" id="grp-senior">
-            <button class="active" data-val="all">전체</button>
-            <button data-val="senior">시니어 (40+)</button>
-            <button data-val="nonsenior">비시니어</button>
-          </div>
+          <select class="filter-select" id="sel-senior" onchange="onSelectFilter('senior', this.value)">
+            <option value="all">전체</option>
+            <option value="senior">시니어 (40+)</option>
+            <option value="nonsenior">비시니어</option>
+          </select>
         </div>
 
         <!-- 기간 단위 -->
@@ -395,10 +397,19 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
         <!-- 수료 현황 -->
         <div class="filter-group">
           <span class="filter-label">수료 현황</span>
-          <div class="btn-group" id="grp-completion">
-            <button class="active" data-val="all">전체</button>
-            <button data-val="completed">수료생</button>
-            <button data-val="notcompleted">미수료생</button>
+          <select class="filter-select" id="sel-completion" onchange="onSelectFilter('completion', this.value)">
+            <option value="all">전체</option>
+            <option value="completed">수료생</option>
+            <option value="notcompleted">미수료생</option>
+          </select>
+        </div>
+
+        <!-- 지표 -->
+        <div class="filter-group">
+          <span class="filter-label">지표</span>
+          <div class="btn-group" id="grp-metric">
+            <button class="active" data-val="lt_11">1-1강</button>
+            <button data-val="lt_ch1">1챕터</button>
           </div>
         </div>
 
@@ -430,11 +441,6 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
             <div class="seg-ctrl" id="grp-view">
               <button id="mode-course" class="active" onclick="setTrendMode('course')">강의별</button>
               <button id="mode-segment" onclick="setTrendMode('segment')">시니어/비시니어</button>
-            </div>
-            <span class="ctrl-sep">·</span>
-            <div class="seg-ctrl" id="grp-metric">
-              <button class="active" data-val="lt_11">1-1강</button>
-              <button data-val="lt_ch1">1챕터</button>
             </div>
           </div>
         </div>
@@ -2108,10 +2114,13 @@ function setupBtnGroup(groupId, filterKey) {
     });
   });
 }
-setupBtnGroup('grp-senior', 'senior');
+function onSelectFilter(key, val) {
+  filters[key] = val;
+  renderDashboard();
+}
+
 setupBtnGroup('grp-period', 'period');
 setupBtnGroup('grp-metric', 'metric');
-setupBtnGroup('grp-completion', 'completion');
 
 document.getElementById('grp-cmp-senior').querySelectorAll('button').forEach(btn => {
   btn.addEventListener('click', () => {
