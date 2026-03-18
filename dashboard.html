@@ -109,8 +109,10 @@ details[open] .gas-guide summary::after { content: '▴'; }
 .content-inner { padding: 0 32px; }
 
 /* ── KPI ── 2-row grid ── */
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
-@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.kpi-row-2 { grid-template-columns: repeat(5, 1fr); margin-bottom: 24px; }
+@media (max-width: 1100px) { .kpi-row-2 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } .kpi-row-2 { grid-template-columns: repeat(2, 1fr); } }
 .kpi-card { background: white; border-radius: 10px; padding: 14px 18px 12px; border: 1px solid rgba(0,53,102,0.08); border-top: 3px solid #E2E8F0; position: relative; overflow: hidden; }
 .kpi-card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .kpi-icon { flex-shrink: 0; opacity: 0.55; }
@@ -249,12 +251,10 @@ tr:hover td { background: #FAFBFF; }
 .modal-actions .btn-secondary { flex: 1; }
 
 /* ── Info tooltip ── */
-.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: #E2E8F0; color: #64748B; font-size: 10px; font-weight: 700; cursor: default; vertical-align: middle; margin-left: 4px; position: relative; font-style: normal; }
-.info-btn:hover .info-tip { display: block; }
-.info-tip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1E293B; color: white; font-size: 11px; font-weight: 400; line-height: 1.7; padding: 10px 14px; border-radius: 8px; width: 280px; text-align: left; white-space: normal; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,0.25); pointer-events: none; }
-.info-tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #1E293B; }
-.info-tip b { color: #7C3AED; }
-.info-tip .tip-eq { background: #334155; border-radius: 5px; padding: 5px 8px; margin: 6px 0; font-family: monospace; font-size: 10.5px; display: block; line-height: 1.8; }
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: #E2E8F0; color: #64748B; font-size: 10px; font-weight: 700; cursor: default; vertical-align: middle; margin-left: 4px; font-style: normal; }
+.info-tip-content { display: none; } /* 데이터 저장용 — 화면에 안 보임 */
+#global-tip b { color: #7C3AED; }
+#global-tip .tip-eq { background: #334155; border-radius: 5px; padding: 5px 8px; margin: 6px 0; font-family: monospace; font-size: 10.5px; display: block; line-height: 1.8; }
 
 /* ── Deploy Analysis ── */
 .deploy-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -335,6 +335,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 </style>
 </head>
 <body>
+<div id="global-tip" style="display:none;position:fixed;z-index:9999;background:#1E293B;color:white;font-size:11px;font-weight:400;line-height:1.75;padding:11px 15px;border-radius:9px;max-width:300px;text-align:left;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,0.28);"></div>
 
 <!-- ═══ DASHBOARD ═══ -->
 <div id="dashboard">
@@ -437,7 +438,8 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
       <div id="tab-pane-main" class="tab-pane active">
 
       <!-- KPI -->
-      <div class="kpi-row" id="kpi-row"></div>
+      <div class="kpi-row" id="kpi-row-1"></div>
+      <div class="kpi-row kpi-row-2" id="kpi-row-2"></div>
 
       <!-- 핵심지표 추이 Section -->
       <div class="section-card">
@@ -895,6 +897,7 @@ function renderKPIs(data) {
 
   const seniors = base.filter(r => r.isSenior === true);
   const srPctAll = base.length ? (seniors.length / base.length * 100) : null;
+  const completeRate = base.length ? (base.filter(r => r.progress >= 100).length / base.length * 100) : null;
 
   // 아이콘 SVG (18×18, stroke-based)
   const IC = {
@@ -905,22 +908,10 @@ function renderKPIs(data) {
     trend:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
     coin1:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a7 7 0 0 1 7-7h2m8 8v-2m0 6v-2m-2.5-4.5C15.5 13 17 13 17 14.5s-1.5 1.5-1.5 3S17 19 17 20.5"/></svg>`,
     coins:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v4c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 9v4c0 1.66 4 3 9 3s9-1.34 9-3V9"/><path d="M3 13v4c0 1.66 4 3 9 3s9-1.34 9-3v-4"/></svg>`,
+    flag:    `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`,
   };
 
-  // 카드 정의 — Row1: 볼륨/LT, Row2: 수료율/매출
-  const cards = [
-    // Row 1
-    { icon: IC.users,  color:'#003566', title: compLabel,            val: data.length.toLocaleString(), unit:'명', sub: '' },
-    { icon: IC.pie,    color:'#64748B', title:'시니어 비율',          val: srPctAll !== null ? srPctAll.toFixed(0) : '–', unit: srPctAll !== null ? '%' : '', sub: srPctAll !== null ? `시니어 ${seniors.length}명 / 비시니어 ${base.length - seniors.length}명` : '' },
-    { icon: IC.clock,  color:'#475569', title:'1-1강 이수 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
-    { icon: IC.clock,  color:'#475569', title:'1챕터 완료 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
-    // Row 2
-    { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
-    { icon: IC.trend,  color:'#0064B4', title:'평균 진도율',          val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit: avgProgress !== null ? '%' : '', sub:'전체 수강생 기준' },
-    { icon: IC.coin1,  color:'#7C3AED', title:'1인당 예상 매출',      val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'', sub: hasPrice ? '품질 지표 · 볼륨 무관' : '강의단가 로딩 필요' },
-    { icon: IC.coins,  color:'#059669', title:'예상 매출 (총)',        val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'', sub: hasPrice ? '수료+진도율 기반 추산' : '강의단가 로딩 필요' },
-  ];
-  document.getElementById('kpi-row').innerHTML = cards.map(k => `
+  const renderCard = k => `
     <div class="kpi-card" style="border-top-color:${k.color};">
       <div class="kpi-card-head" style="color:${k.color};">
         ${k.icon}
@@ -928,7 +919,25 @@ function renderKPIs(data) {
       </div>
       <div class="kpi-value">${k.val}<span class="kpi-unit">${k.unit}</span></div>
       ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
-    </div>`).join('');
+    </div>`;
+
+  // Row 1: 볼륨/LT (4 columns)
+  const row1Cards = [
+    { icon: IC.users,  color:'#003566', title: compLabel,            val: data.length.toLocaleString(), unit:'명', sub: '' },
+    { icon: IC.pie,    color:'#64748B', title:'시니어 비율',          val: srPctAll !== null ? srPctAll.toFixed(0) : '–', unit: srPctAll !== null ? '%' : '', sub: srPctAll !== null ? `시니어 ${seniors.length}명 / 비시니어 ${base.length - seniors.length}명` : '' },
+    { icon: IC.clock,  color:'#475569', title:'1-1강 이수 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    { icon: IC.clock,  color:'#475569', title:'1챕터 완료 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+  ];
+  // Row 2: 수료율/매출 (5 columns)
+  const row2Cards = [
+    { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
+    { icon: IC.trend,  color:'#0064B4', title:'평균 진도율',          val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit: avgProgress !== null ? '%' : '', sub:'전체 수강생 기준' },
+    { icon: IC.flag,   color:'#F97316', title:'완강률',               val: completeRate !== null ? completeRate.toFixed(1) : '–', unit: completeRate !== null ? '%' : '', sub:'진도율 100% 기준' },
+    { icon: IC.coin1,  color:'#7C3AED', title:'1인당 예상 매출',      val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'', sub: hasPrice ? '품질 지표 · 볼륨 무관' : '강의단가 로딩 필요' },
+    { icon: IC.coins,  color:'#059669', title:'예상 매출 (총)',        val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'', sub: hasPrice ? '수료+진도율 기반 추산' : '강의단가 로딩 필요' },
+  ];
+  document.getElementById('kpi-row-1').innerHTML = row1Cards.map(renderCard).join('');
+  document.getElementById('kpi-row-2').innerHTML = row2Cards.map(renderCard).join('');
 }
 
 // ════════════════════════════════════
@@ -967,6 +976,10 @@ function renderKpiTrendChart() {
     if (!all.length) return null;
     return all.reduce((sum, r) => { const v = calcRevenue(r); return sum + (v !== null ? v : 0); }, 0) / all.length;
   }) : null;
+  const completionRateData = labels.map(k => {
+    const all = periodMap[k].all;
+    return all.length ? all.filter(r => r.progress >= 100).length / all.length * 100 : null;
+  });
 
   // 배포 이벤트 마커
   const notes = getNotes().sort((a, b) => a.date < b.date ? -1 : 1);
@@ -1026,6 +1039,17 @@ function renderKpiTrendChart() {
       borderColor: '#0064B4',
       backgroundColor: 'transparent',
       borderDash: [5, 3],
+      tension: 0.35,
+      yAxisID: 'yLeft',
+      pointRadius: 4,
+      spanGaps: true,
+    },
+    {
+      label: '완강률 (%)',
+      data: completionRateData,
+      borderColor: '#F97316',
+      backgroundColor: 'transparent',
+      borderDash: [3, 2],
       tension: 0.35,
       yAxisID: 'yLeft',
       pointRadius: 4,
@@ -1111,7 +1135,7 @@ function renderKpiTrendChart() {
   }
 
   // 기간별 상세 테이블
-  renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, revPerStudentData, hasPrice);
+  renderKpiTrendTable(labels, periodMap, crData, progData, completionRateData, revenueData, revPerStudentData, hasPrice);
 }
 
 function toggleKpiDataset(idx) {
@@ -1137,7 +1161,7 @@ function toggleKpiTableRow(lbl) {
   if (btn) btn.textContent = _kpiTableExpanded.has(lbl) ? '▲' : '▼';
 }
 
-function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, revPerStudentData, hasPrice) {
+function renderKpiTrendTable(labels, periodMap, crData, progData, completionRateData, revenueData, revPerStudentData, hasPrice) {
   const el = document.getElementById('kpi-trend-table');
   if (!el || !labels.length) { if (el) el.innerHTML = ''; return; }
 
@@ -1158,23 +1182,25 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
   });
 
   const revTh  = hasPrice ? `<th style="color:#059669;">총 매출</th><th style="color:#7C3AED;">1인당 매출</th>` : '';
-  const colTotal = hasPrice ? 6 : 4;
+  const colTotal = hasPrice ? 7 : 5;
 
   const thead = `<thead>
     <tr>
       <th style="min-width:90px;text-align:left;padding:6px 10px;">${filters.period === 'month' ? '월' : '주'}</th>
       <th>수강생</th>
       <th>수료율</th>
+      <th style="color:#F97316;">완강률</th>
       <th style="color:#0064B4;">평균 진도율</th>
       ${revTh}
     </tr>
   </thead>`;
 
-  const periodRows = labels.map((lbl) => {
+  const periodRows = labels.map((lbl, lblIdx) => {
     const e = periodMap[lbl].ended;
     const all = periodMap[lbl].all;
     const cr = e.length ? (e.filter(r => r.isCompleted).length / e.length * 100) : null;
     const prog = avg(all.map(r => r.progress));
+    const wancr = all.length ? all.filter(r => r.progress >= 100).length / all.length * 100 : null;
     const rev = hasPrice ? all.reduce((sum, r) => { const v = calcRevenue(r); return sum + (v !== null ? v : 0); }, 0) : null;
     const rps = (hasPrice && all.length) ? (rev / all.length) : null;
 
@@ -1183,6 +1209,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
       const c = cellMap[key];
       if (!c || !c.all.length) return '';
       const cCr = c.ended.length ? (c.ended.filter(r => r.isCompleted).length / c.ended.length * 100) : null;
+      const cWancr = c.all.length ? c.all.filter(r => r.progress >= 100).length / c.all.length * 100 : null;
       const cProg = avg(c.all.map(r => r.progress));
       const cRev = hasPrice ? c.all.reduce((sum, r) => { const v = calcRevenue(r); return sum + (v !== null ? v : 0); }, 0) : null;
       const cRps = (hasPrice && c.all.length) ? (cRev / c.all.length) : null;
@@ -1195,6 +1222,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
         <td style="padding:4px 10px 4px 22px;font-size:11px;color:#475569;text-align:left;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${course}">${courseName}</td>
         <td style="font-size:11px;">${c.all.length}</td>
         <td style="font-size:11px;">${cCr !== null ? cCr.toFixed(1) + '%' : '–'}</td>
+        <td style="font-size:11px;color:#F97316;">${cWancr !== null ? cWancr.toFixed(1) + '%' : '–'}</td>
         <td style="font-size:11px;color:#0064B4;">${cProg !== null ? cProg.toFixed(1) + '%' : '–'}</td>
         ${revSubTd}
       </tr>`;
@@ -1218,6 +1246,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
     return `<tr style="background:white;border-top:2px solid #E2E8F0;">${titleCell}
       <td style="font-weight:700;">${all.length}</td>
       <td style="font-weight:700;">${cr !== null ? cr.toFixed(1) + '%' : '–'}</td>
+      <td style="font-weight:700;color:#F97316;">${wancr !== null ? wancr.toFixed(1) + '%' : '–'}</td>
       <td style="font-weight:700;color:#0064B4;">${prog !== null ? prog.toFixed(1) + '%' : '–'}</td>
       ${revSumTd}
     </tr>${detailBlock}`;
@@ -2014,6 +2043,30 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── Global info tooltip ──
+document.addEventListener('mouseover', e => {
+  const btn = e.target.closest('.info-btn');
+  const tip = document.getElementById('global-tip');
+  if (!btn || !tip) return;
+  const content = btn.querySelector('.info-tip-content');
+  if (!content) return;
+  tip.innerHTML = content.innerHTML;
+  tip.style.display = 'block';
+  const r = btn.getBoundingClientRect();
+  const tH = tip.offsetHeight || 160;
+  const tW = tip.offsetWidth || 300;
+  const top = r.bottom + 8 + tH < window.innerHeight ? r.bottom + 8 : r.top - tH - 8;
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - tW / 2, window.innerWidth - tW - 8));
+  tip.style.top = top + 'px';
+  tip.style.left = left + 'px';
+});
+document.addEventListener('mouseout', e => {
+  const tip = document.getElementById('global-tip');
+  if (tip && (!e.relatedTarget || !e.relatedTarget.closest('.info-btn'))) {
+    tip.style.display = 'none';
+  }
+});
+
 function updateMsLabel() {
   const n = selectedCourses.size;
   let label;
@@ -2184,7 +2237,7 @@ function deltaChip(b, a, lowerBetter, isPercent) {
 function renderDeployDetailRow(note, bef, aft) {
   const courses = [...new Set([...bef, ...aft].map(r => r.course).filter(Boolean))].sort(sortByCourse);
   if (!courses.length) {
-    return `<tr class="deploy-detail-row"><td colspan="7">
+    return `<tr class="deploy-detail-row"><td colspan="9">
       <div class="deploy-detail-inner" style="color:#94A3B8;text-align:center;padding:16px;">이 기간에 해당하는 강의 데이터가 없습니다.</div>
     </td></tr>`;
   }
@@ -2197,6 +2250,10 @@ function renderDeployDetailRow(note, bef, aft) {
     const ac1b=avg(cb.map(r=>r.lt_ch1)), ac1a=avg(ca.map(r=>r.lt_ch1));
     const crb=eb.length?eb.filter(r=>r.isCompleted).length/eb.length*100:null;
     const cra=ea.length?ea.filter(r=>r.isCompleted).length/ea.length*100:null;
+    const cWancrb = cb.length ? cb.filter(r=>r.progress>=100).length/cb.length*100 : null;
+    const cWancra = ca.length ? ca.filter(r=>r.progress>=100).length/ca.length*100 : null;
+    const cAvgProgB = avg(cb.map(r=>r.progress));
+    const cAvgProgA = avg(ca.map(r=>r.progress));
     const cRevb = hasPrice2 ? cb.reduce((s,r)=>{ const v=calcRevenue(r); return s+(v!==null?v:0); },0) : null;
     const cReva = hasPrice2 ? ca.reduce((s,r)=>{ const v=calcRevenue(r); return s+(v!==null?v:0); },0) : null;
     const pid = courseProductMap[c] || '';
@@ -2209,6 +2266,11 @@ function renderDeployDetailRow(note, bef, aft) {
       const bv = b !== null ? b.toFixed(1)+'%' : '–';
       const av = a !== null ? a.toFixed(1)+'%' : '–';
       return `<span style="color:#94A3B8;font-size:11px;">전 ${bv}</span><br><span style="font-weight:700;">후 ${av}</span>`;
+    };
+    const fmtPctPair = (b, a, color) => {
+      const bv = b !== null ? b.toFixed(1)+'%' : '–';
+      const av = a !== null ? a.toFixed(1)+'%' : '–';
+      return `<span style="color:#94A3B8;font-size:11px;">전 ${bv}</span><br><span style="font-weight:700;color:${color};">후 ${av}</span>`;
     };
     const fmtRevPair = (b, a) => {
       if (b === null) return '<span style="color:#94A3B8;font-size:11px;">–</span>';
@@ -2225,12 +2287,14 @@ function renderDeployDetailRow(note, bef, aft) {
       <td>${fmtPair(a11b,a11a)}<br>${deltaChip(a11b,a11a,true)}</td>
       <td>${fmtPair(ac1b,ac1a)}<br>${deltaChip(ac1b,ac1a,true)}</td>
       <td>${fmtCrPair(crb,cra)}<br>${deltaChip(crb,cra,false,true)}</td>
+      <td>${fmtPctPair(cWancrb,cWancra,'#F97316')}<br>${deltaChip(cWancrb,cWancra,false,true)}</td>
+      <td>${fmtPctPair(cAvgProgB,cAvgProgA,'#0064B4')}<br>${deltaChip(cAvgProgB,cAvgProgA,false,true)}</td>
       ${revDetailTd}
       <td></td>
     </tr>`;
   }).join('');
   const revDetailTh = hasPrice2 ? `<th style="color:#059669;">예상 매출</th>` : '';
-  return `<tr class="deploy-detail-row"><td colspan="7" style="padding:0!important;border-bottom:2px solid #CBD5E1;">
+  return `<tr class="deploy-detail-row"><td colspan="9" style="padding:0!important;border-bottom:2px solid #CBD5E1;">
     <div class="deploy-detail-inner">
       <div style="font-size:11px;font-weight:700;color:#003566;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;">강의별 상세 비교</div>
       <div style="overflow-x:auto;">
@@ -2241,6 +2305,8 @@ function renderDeployDetailRow(note, bef, aft) {
             <th>1-1강 이수</th>
             <th>1챕터 완료</th>
             <th>수료율</th>
+            <th style="color:#F97316;">완강률</th>
+            <th style="color:#0064B4;">평균 진도율</th>
             ${revDetailTh}
             <th></th>
           </tr></thead>
@@ -2268,6 +2334,10 @@ function renderDeployAnalysis() {
     const ac1b=avg(bef.map(r=>r.lt_ch1)), ac1a=avg(aft.map(r=>r.lt_ch1));
     const crb=eb.length?eb.filter(r=>r.isCompleted).length/eb.length*100:null;
     const cra=ea.length?ea.filter(r=>r.isCompleted).length/ea.length*100:null;
+    const avgProgB = avg(bef.map(r => r.progress));
+    const avgProgA = avg(aft.map(r => r.progress));
+    const wancrb = bef.length ? bef.filter(r => r.progress >= 100).length / bef.length * 100 : null;
+    const wancra = aft.length ? aft.filter(r => r.progress >= 100).length / aft.length * 100 : null;
     const hasPrice = Object.keys(priceMap).length > 0;
     const revb = hasPrice ? bef.reduce((s,r)=>{ const v=calcRevenue(r); return s+(v!==null?v:0); },0) : null;
     const reva = hasPrice ? aft.reduce((s,r)=>{ const v=calcRevenue(r); return s+(v!==null?v:0); },0) : null;
@@ -2298,6 +2368,24 @@ function renderDeployAnalysis() {
       return `<div class="vs-cell">
         <div class="vs-row"><span class="vs-label vs-before">전</span><span style="color:#64748B;font-size:12px;">${bv}</span></div>
         <div class="vs-row"><span class="vs-label vs-after">후</span><span style="font-weight:700;font-size:13px;color:#1E293B;">${av}</span></div>
+        <div>${deltaChip(b,a,false,true)}</div>
+      </div>`;
+    };
+    const progCell = (b, a) => {
+      const bv = b !== null ? b.toFixed(1)+'%' : '–';
+      const av = a !== null ? a.toFixed(1)+'%' : '–';
+      return `<div class="vs-cell">
+        <div class="vs-row"><span class="vs-label vs-before">전</span><span style="color:#64748B;font-size:12px;">${bv}</span></div>
+        <div class="vs-row"><span class="vs-label vs-after">후</span><span style="font-weight:700;font-size:13px;color:#0064B4;">${av}</span></div>
+        <div>${deltaChip(b,a,false,true)}</div>
+      </div>`;
+    };
+    const wancrCell = (b, a) => {
+      const bv = b !== null ? b.toFixed(1)+'%' : '–';
+      const av = a !== null ? a.toFixed(1)+'%' : '–';
+      return `<div class="vs-cell">
+        <div class="vs-row"><span class="vs-label vs-before">전</span><span style="color:#64748B;font-size:12px;">${bv}</span></div>
+        <div class="vs-row"><span class="vs-label vs-after">후</span><span style="font-weight:700;font-size:13px;color:#F97316;">${av}</span></div>
         <div>${deltaChip(b,a,false,true)}</div>
       </div>`;
     };
@@ -2333,12 +2421,16 @@ function renderDeployAnalysis() {
           ${note.desc ? `<div style="font-size:11px;color:#94A3B8;margin-top:4px;font-style:italic;">${note.desc}</div>` : ''}
         </td>
         <td>
-          <div class="bef-aft-n"><span style="color:#94A3B8;">${bef.length}명</span><span style="color:#CBD5E1;margin:0 4px;">→</span><span class="ba-after">${aft.length}명</span></div>
-          <div class="n-lbl" style="margin-top:2px;">수료대상 ${eb.length}→${ea.length}명</div>
+          <div class="vs-cell">
+            <div class="vs-row"><span class="vs-label vs-before">전</span><span style="color:#64748B;font-size:12px;">${bef.length}명</span></div>
+            <div class="vs-row"><span class="vs-label vs-after">후</span><span style="font-weight:700;font-size:13px;color:#1E293B;">${aft.length}명</span></div>
+          </div>
         </td>
         <td>${mpCell(a11b,a11a,true)}</td>
         <td>${mpCell(ac1b,ac1a,true)}</td>
         <td>${crCell(crb,cra)}</td>
+        <td>${wancrCell(wancrb,wancra)}</td>
+        <td>${progCell(avgProgB,avgProgA)}</td>
         <td>${revCell()}</td>
         <td><span class="expand-btn">${isExpanded?'▲ 접기':'▼ 상세'}</span></td>
       </tr>
@@ -2349,12 +2441,14 @@ function renderDeployAnalysis() {
   body.innerHTML = `<div style="overflow-x:auto;"><table class="deploy-tbl">
     <thead><tr>
       <th class="left" style="min-width:200px;">배포 이벤트</th>
-      <th style="min-width:110px;">수강생 (전→후)</th>
+      <th style="min-width:100px;">수강생</th>
       <th style="min-width:140px;">1-1강 이수</th>
       <th style="min-width:140px;">1챕터 완료</th>
       <th style="min-width:120px;">수료율</th>
+      <th style="min-width:120px;color:#F97316;">완강률</th>
+      <th style="min-width:120px;color:#0064B4;">평균 진도율</th>
       <th style="min-width:160px;color:#7C3AED;">매출 분석
-        <i class="info-btn">?<span class="info-tip">
+        <i class="info-btn">?<span class="info-tip-content">
           <b>볼륨 효과</b>: 수강생 수가 늘어서 생긴 매출 증가. 우리 팀 기여와 무관할 수 있음.<br>
           <span class="tip-eq">= (후 수강생 − 전 수강생) × 전 1인당 매출</span>
           <b>품질 효과</b>: 수강생 수가 같더라도, 수료율·진도율이 높아져 1인당 매출이 올라간 부분. <b>우리 팀 배포의 순수 기여분</b>.<br>
