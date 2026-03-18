@@ -108,13 +108,16 @@ details[open] .gas-guide summary::after { content: '▴'; }
 .content { padding: 28px 0; max-width: 1480px; margin: 0 auto; }
 .content-inner { padding: 0 32px; }
 
-/* ── KPI ── compact pill strip ── */
-.kpi-row { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
-.kpi-card { background: white; border-radius: 8px; padding: 14px 20px; border: 1px solid rgba(0,53,102,0.08); border-left: 3px solid #FA0030; flex: 1; min-width: 140px; }
-.kpi-card h3 { font-size: 12px; color: #94A3B8; font-weight: 600; margin-bottom: 4px; }
-.kpi-value { font-size: 20px; font-weight: 800; color: #1E293B; line-height: 1.2; }
-.kpi-unit { font-size: 12px; font-weight: 400; color: #94A3B8; }
-.kpi-sub { font-size: 12px; color: #94A3B8; margin-top: 4px; line-height: 1.5; }
+/* ── KPI ── 2-row grid ── */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+.kpi-card { background: white; border-radius: 10px; padding: 14px 18px 12px; border: 1px solid rgba(0,53,102,0.08); border-top: 3px solid #E2E8F0; position: relative; overflow: hidden; }
+.kpi-card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.kpi-icon { flex-shrink: 0; opacity: 0.55; }
+.kpi-title { font-size: 11px; color: #64748B; font-weight: 600; line-height: 1.4; }
+.kpi-value { font-size: 22px; font-weight: 800; color: #1E293B; line-height: 1.2; letter-spacing: -0.5px; }
+.kpi-unit { font-size: 13px; font-weight: 400; color: #94A3B8; }
+.kpi-sub { font-size: 11px; color: #94A3B8; margin-top: 5px; line-height: 1.5; }
 
 /* ── Section card (replaces chart-card) ── */
 .section-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 24px; overflow: hidden; }
@@ -244,6 +247,14 @@ tr:hover td { background: #FAFBFF; }
 .modal-actions { display: flex; gap: 8px; margin-top: 12px; }
 .modal-actions .btn-primary { flex: 1; margin-top: 0; }
 .modal-actions .btn-secondary { flex: 1; }
+
+/* ── Info tooltip ── */
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: #E2E8F0; color: #64748B; font-size: 10px; font-weight: 700; cursor: default; vertical-align: middle; margin-left: 4px; position: relative; font-style: normal; }
+.info-btn:hover .info-tip { display: block; }
+.info-tip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1E293B; color: white; font-size: 11px; font-weight: 400; line-height: 1.7; padding: 10px 14px; border-radius: 8px; width: 280px; text-align: left; white-space: normal; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,0.25); pointer-events: none; }
+.info-tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #1E293B; }
+.info-tip b { color: #7C3AED; }
+.info-tip .tip-eq { background: #334155; border-radius: 5px; padding: 5px 8px; margin: 6px 0; font-family: monospace; font-size: 10.5px; display: block; line-height: 1.8; }
 
 /* ── Deploy Analysis ── */
 .deploy-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -433,13 +444,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
         <div class="section-head">
           <div>
             <div class="section-title">핵심지표 추이</div>
-            <div class="section-sub" id="kpi-trend-subtitle">월별 수료율 · 평균 진도율 · 예상 매출 추이</div>
-          </div>
-          <div class="ctrl-row">
-            <div class="seg-ctrl" id="grp-kpi-period">
-              <button class="active" data-val="month">월간</button>
-              <button data-val="week">주간</button>
-            </div>
+            <div class="section-sub" id="kpi-trend-subtitle">수료율 · 평균 진도율 · 예상 매출 추이</div>
           </div>
         </div>
         <div class="section-body" style="padding-top:10px;">
@@ -888,18 +893,39 @@ function renderKPIs(data) {
     ? base.reduce((sum, r) => { const v = calcRevenue(r); return sum + (v !== null ? v : 0); }, 0) / base.length
     : null;
 
+  const seniors = base.filter(r => r.isSenior === true);
+  const srPctAll = base.length ? (seniors.length / base.length * 100) : null;
+
+  // 아이콘 SVG (18×18, stroke-based)
+  const IC = {
+    users:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    pie:     `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>`,
+    clock:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    award:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>`,
+    trend:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+    coin1:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a7 7 0 0 1 7-7h2m8 8v-2m0 6v-2m-2.5-4.5C15.5 13 17 13 17 14.5s-1.5 1.5-1.5 3S17 19 17 20.5"/></svg>`,
+    coins:   `<svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v4c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 9v4c0 1.66 4 3 9 3s9-1.34 9-3V9"/><path d="M3 13v4c0 1.66 4 3 9 3s9-1.34 9-3v-4"/></svg>`,
+  };
+
+  // 카드 정의 — Row1: 볼륨/LT, Row2: 수료율/매출
   const cards = [
-    { cls:'', title: compLabel, val: data.length.toLocaleString(), unit:'명', sub:'' },
-    { cls:'', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
-    { cls:'', title:'평균 진도율', val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit:'%', sub:'전체 수강생 기준' },
-    { cls:'', title:'예상 매출 (총)', val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'', sub: hasPrice ? '수료+진도율 기반 추산' : '강의단가 로딩 필요' },
-    { cls:'', title:'1인당 예상 매출', val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'', sub: hasPrice ? '볼륨 무관 · 품질 지표' : '강의단가 로딩 필요' },
-    { cls:'', title:'1-1강 이수 리드타임 평균', val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
-    { cls:'', title:'1챕터 완료 리드타임 평균', val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    // Row 1
+    { icon: IC.users,  color:'#003566', title: compLabel,            val: data.length.toLocaleString(), unit:'명', sub: '' },
+    { icon: IC.pie,    color:'#64748B', title:'시니어 비율',          val: srPctAll !== null ? srPctAll.toFixed(0) : '–', unit: srPctAll !== null ? '%' : '', sub: srPctAll !== null ? `시니어 ${seniors.length}명 / 비시니어 ${base.length - seniors.length}명` : '' },
+    { icon: IC.clock,  color:'#475569', title:'1-1강 이수 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    { icon: IC.clock,  color:'#475569', title:'1챕터 완료 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    // Row 2
+    { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
+    { icon: IC.trend,  color:'#0064B4', title:'평균 진도율',          val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit: avgProgress !== null ? '%' : '', sub:'전체 수강생 기준' },
+    { icon: IC.coin1,  color:'#7C3AED', title:'1인당 예상 매출',      val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'', sub: hasPrice ? '품질 지표 · 볼륨 무관' : '강의단가 로딩 필요' },
+    { icon: IC.coins,  color:'#059669', title:'예상 매출 (총)',        val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'', sub: hasPrice ? '수료+진도율 기반 추산' : '강의단가 로딩 필요' },
   ];
   document.getElementById('kpi-row').innerHTML = cards.map(k => `
-    <div class="kpi-card ${k.cls}">
-      <h3>${k.title}</h3>
+    <div class="kpi-card" style="border-top-color:${k.color};">
+      <div class="kpi-card-head" style="color:${k.color};">
+        ${k.icon}
+        <span class="kpi-title">${k.title}</span>
+      </div>
       <div class="kpi-value">${k.val}<span class="kpi-unit">${k.unit}</span></div>
       ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
     </div>`).join('');
@@ -909,12 +935,11 @@ function renderKPIs(data) {
 // KPI Trend Chart (수료율·진도율·매출 추이)
 // ════════════════════════════════════
 let kpiTrendChart = null;
-let kpiPeriod = 'month';  // 'month' | 'week'
 let _kpiDeployAtLabel = {};
 
 function renderKpiTrendChart() {
   const base = getFilteredBase();
-  const pk   = kpiPeriod === 'month' ? 'periodMonth' : 'periodWeek';
+  const pk   = filters.period === 'month' ? 'periodMonth' : 'periodWeek';
 
   // 기간별 집계
   const periodMap = {};
@@ -948,7 +973,7 @@ function renderKpiTrendChart() {
   _kpiDeployAtLabel = {};
   notes.forEach(note => {
     const nd = new Date(note.date + 'T00:00:00');
-    const nk = kpiPeriod === 'month' ? getMonthKey(nd) : getWeekKey(nd);
+    const nk = filters.period === 'month' ? getMonthKey(nd) : getWeekKey(nd);
     const past = labels.filter(l => l <= nk);
     const target = past.length ? past[past.length - 1] : null;
     if (target) { if (!_kpiDeployAtLabel[target]) _kpiDeployAtLabel[target] = []; _kpiDeployAtLabel[target].push(note.title); }
@@ -1105,9 +1130,9 @@ const _kpiTableExpanded = new Set();
 function toggleKpiTableRow(lbl) {
   if (_kpiTableExpanded.has(lbl)) _kpiTableExpanded.delete(lbl);
   else _kpiTableExpanded.add(lbl);
-  // 강의 상세 행만 토글 (re-render 없이 DOM 직접 제어)
-  const detailEl = document.getElementById('kpi-detail-' + CSS.escape(lbl));
-  const btn = document.getElementById('kpi-toggle-btn-' + CSS.escape(lbl));
+  const safeId = lbl.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const detailEl = document.getElementById('kpi-detail-' + safeId);
+  const btn = document.getElementById('kpi-toggle-btn-' + safeId);
   if (detailEl) detailEl.style.display = _kpiTableExpanded.has(lbl) ? '' : 'none';
   if (btn) btn.textContent = _kpiTableExpanded.has(lbl) ? '▲' : '▼';
 }
@@ -1116,7 +1141,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
   const el = document.getElementById('kpi-trend-table');
   if (!el || !labels.length) { if (el) el.innerHTML = ''; return; }
 
-  const pk = kpiPeriod === 'month' ? 'periodMonth' : 'periodWeek';
+  const pk = filters.period === 'month' ? 'periodMonth' : 'periodWeek';
   const base = getFilteredBase();
 
   const coursesInPeriod = new Set();
@@ -1137,7 +1162,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, revenueData, r
 
   const thead = `<thead>
     <tr>
-      <th style="min-width:90px;text-align:left;padding:6px 10px;">${kpiPeriod === 'month' ? '월' : '주'}</th>
+      <th style="min-width:90px;text-align:left;padding:6px 10px;">${filters.period === 'month' ? '월' : '주'}</th>
       <th>수강생</th>
       <th>수료율</th>
       <th style="color:#0064B4;">평균 진도율</th>
@@ -2328,7 +2353,15 @@ function renderDeployAnalysis() {
       <th style="min-width:140px;">1-1강 이수</th>
       <th style="min-width:140px;">1챕터 완료</th>
       <th style="min-width:120px;">수료율</th>
-      <th style="min-width:160px;color:#7C3AED;">매출 분석 (1인당·볼륨/품질)</th>
+      <th style="min-width:160px;color:#7C3AED;">매출 분석
+        <i class="info-btn">?<span class="info-tip">
+          <b>볼륨 효과</b>: 수강생 수가 늘어서 생긴 매출 증가. 우리 팀 기여와 무관할 수 있음.<br>
+          <span class="tip-eq">= (후 수강생 − 전 수강생) × 전 1인당 매출</span>
+          <b>품질 효과</b>: 수강생 수가 같더라도, 수료율·진도율이 높아져 1인당 매출이 올라간 부분. <b>우리 팀 배포의 순수 기여분</b>.<br>
+          <span class="tip-eq">= 후 수강생 × (후 1인당 매출 − 전 1인당 매출)</span>
+          품질 효과가 <b>양수</b>이면 → 제품 개선으로 실제 매출이 늘었다는 의미.
+        </span></i>
+      </th>
       <th style="width:60px;"></th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -2617,14 +2650,6 @@ function onSelectFilter(key, val) {
 setupBtnGroup('grp-period', 'period');
 setupBtnGroup('grp-metric', 'metric');
 
-document.getElementById('grp-kpi-period').querySelectorAll('button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('grp-kpi-period').querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    kpiPeriod = btn.dataset.val;
-    renderKpiTrendChart();
-  });
-});
 
 document.getElementById('grp-cmp-senior').querySelectorAll('button').forEach(btn => {
   btn.addEventListener('click', () => {
