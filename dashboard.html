@@ -2557,12 +2557,41 @@ function renderRealtime() {
   const active = all.filter(r => r.courseStart && r.courseStart <= now && !r.courseEnded && r.courseEnd);
   const uniqueActive = [...new Map(active.map(r => [r.enrollId, r])).values()];
 
-  // Historical — prediction model based on ch1 (not lt11, to avoid circular logic with isCompleted)
+  // Per-course historical stats (for lead-time based prediction)
   const historical = all.filter(r => r.courseEnded);
-  const histWithCh1    = historical.filter(r => r.lt_ch1 !== null);
-  const histWithoutCh1 = historical.filter(r => r.lt_ch1 === null);
-  const crWithCh1    = histWithCh1.length    ? histWithCh1.filter(r => r.isCompleted).length    / histWithCh1.length    * 100 : null;
-  const crWithoutCh1 = histWithoutCh1.length ? histWithoutCh1.filter(r => r.isCompleted).length / histWithoutCh1.length * 100 : null;
+  const histByCourse = {};
+  historical.forEach(r => {
+    if (!r.course) return;
+    if (!histByCourse[r.course]) histByCourse[r.course] = [];
+    histByCourse[r.course].push(r);
+  });
+  // Global fallbacks
+  const histGlobalWithLt11    = historical.filter(r => r.lt_11  !== null);
+  const histGlobalWithoutLt11 = historical.filter(r => r.lt_11  === null);
+  const histGlobalWithCh1     = historical.filter(r => r.lt_ch1 !== null);
+  const histGlobalWithoutCh1  = historical.filter(r => r.lt_ch1 === null);
+  const globalCrWithLt11    = histGlobalWithLt11.length    ? histGlobalWithLt11.filter(r=>r.isCompleted).length    / histGlobalWithLt11.length    * 100 : null;
+  const globalCrWithoutLt11 = histGlobalWithoutLt11.length ? histGlobalWithoutLt11.filter(r=>r.isCompleted).length / histGlobalWithoutLt11.length * 100 : null;
+  const globalCrWithCh1     = histGlobalWithCh1.length     ? histGlobalWithCh1.filter(r=>r.isCompleted).length     / histGlobalWithCh1.length     * 100 : null;
+  const globalCrWithoutCh1  = histGlobalWithoutCh1.length  ? histGlobalWithoutCh1.filter(r=>r.isCompleted).length  / histGlobalWithoutCh1.length  * 100 : null;
+
+  const getHistCourseStats = course => {
+    const hist = histByCourse[course] || [];
+    const wLt11  = hist.filter(r => r.lt_11  !== null);
+    const woLt11 = hist.filter(r => r.lt_11  === null);
+    const wCh1   = hist.filter(r => r.lt_ch1 !== null);
+    const woCh1  = hist.filter(r => r.lt_ch1 === null);
+    return {
+      total:          hist.length,
+      avgLt11:        avg(wLt11.map(r => r.lt_11)),
+      avgCh1:         avg(wCh1.map(r  => r.lt_ch1)),
+      crWithLt11:     wLt11.length  ? wLt11.filter(r=>r.isCompleted).length  / wLt11.length  * 100 : (globalCrWithLt11),
+      crWithoutLt11:  woLt11.length ? woLt11.filter(r=>r.isCompleted).length / woLt11.length * 100 : (globalCrWithoutLt11),
+      crWithCh1:      wCh1.length   ? wCh1.filter(r=>r.isCompleted).length   / wCh1.length   * 100 : (globalCrWithCh1),
+      crWithoutCh1:   woCh1.length  ? woCh1.filter(r=>r.isCompleted).length  / woCh1.length  * 100 : (globalCrWithoutCh1),
+      wLt11Len: wLt11.length, wCh1Len: wCh1.length,
+    };
+  };
 
   // Phase helpers
   const getCoursePct = r => {
@@ -2574,28 +2603,27 @@ function renderRealtime() {
   const getPhase = r => {
     const p = getCoursePct(r);
     if (p === null) return null;
-    if (p < 33) return 'early';
-    if (p < 67) return 'mid';
-    return 'late';
+    if (p < 33) return 'early'; if (p < 67) return 'mid'; return 'late';
   };
   const PHASE_COLORS = { early: '#059669', mid: '#0064B4', late: '#F97316' };
-  const PHASE_LABELS = { early: '초반 (0~33%)', mid: '중반 (33~67%)', late: '후반 (67~100%)' };
+  const PHASE_LABELS = { early: '초반', mid: '중반', late: '후반' };
 
   // Risk: 7일+ 경과 AND lt_11 === null
   const isRisk = r => (now - r.courseStart) / 86400000 >= 7 && r.lt_11 === null;
 
   // Summary stats
   const totalActive = uniqueActive.length;
-  const riskCount = uniqueActive.filter(isRisk).length;
-  const ch1Count  = uniqueActive.filter(r => r.lt_ch1 !== null).length;
-  const ch1Rate   = totalActive ? ch1Count / totalActive * 100 : null;
-  const expComp   = totalActive && (crWithCh1 !== null || crWithoutCh1 !== null)
+  const riskCount   = uniqueActive.filter(isRisk).length;
+  const ch1Count    = uniqueActive.filter(r => r.lt_ch1 !== null).length;
+  const ch1Rate     = totalActive ? ch1Count / totalActive * 100 : null;
+  // Global expected rate (ch1-based)
+  const expComp = totalActive && (globalCrWithCh1 !== null || globalCrWithoutCh1 !== null)
     ? uniqueActive.reduce((sum, r) =>
-        sum + (r.lt_ch1 !== null ? (crWithCh1 ?? 70) / 100 : (crWithoutCh1 ?? 30) / 100), 0)
+        sum + (r.lt_ch1 !== null ? (globalCrWithCh1 ?? 70) / 100 : (globalCrWithoutCh1 ?? 30) / 100), 0)
     : null;
   const expRate = (expComp !== null && totalActive) ? expComp / totalActive * 100 : null;
 
-  // Summary cards
+  // Summary bar
   const summaryHtml = `<div class="rt-summary-bar">
     <div class="rt-summary-card">
       <div class="rt-summary-val" style="color:#003566;">${totalActive.toLocaleString()}</div>
@@ -2611,7 +2639,7 @@ function renderRealtime() {
     </div>
     <div class="rt-summary-card">
       <div class="rt-summary-val" style="color:#7C3AED;">${expRate !== null ? expRate.toFixed(0) + '%' : '–'}</div>
-      <div class="rt-summary-lbl">예상 수료율<br><span style="font-size:9px;">(1챕터 패턴 기반 추산)</span></div>
+      <div class="rt-summary-lbl">예상 수료율<br><span style="font-size:9px;">(1챕터 패턴 기반)</span></div>
     </div>
   </div>`;
 
@@ -2625,89 +2653,166 @@ function renderRealtime() {
     courseGroups[r.course][ck].push(r);
   });
 
-  const mkProgressBar = (n, total, color) =>
-    `<div style="display:flex;align-items:center;gap:4px;flex:1;">
-      <div class="rt-progress-wrap" style="flex:1;"><div class="rt-progress-fill" style="width:${total?n/total*100:0}%;background:${color};"></div></div>
-      <span style="font-size:11px;font-weight:700;color:${color};white-space:nowrap;">${n}/${total}</span>
+  // Mini progress bar (horizontal, compact)
+  const miniBar = (pct, color) =>
+    `<div style="flex:1;background:#F1F5F9;border-radius:3px;height:6px;overflow:hidden;">
+      <div style="width:${Math.min(100,pct??0)}%;height:100%;background:${color};border-radius:3px;"></div>
     </div>`;
 
+  // Lead time comparison badge
+  const ltDeltaBadge = (cohortLt, histLt) => {
+    if (cohortLt === null || histLt === null || histLt === 0) return '';
+    const ratio = (cohortLt - histLt) / histLt * 100;
+    if (Math.abs(ratio) < 5) return `<span style="font-size:10px;color:#64748B;">≈ 과거 평균</span>`;
+    const faster = ratio < 0;
+    return `<span style="font-size:10px;font-weight:700;color:${faster?'#059669':'#EF4444'};">${faster?'▲빠름':'▽느림'} ${Math.abs(ratio).toFixed(0)}%</span>`;
+  };
+
+  // Adjusted prediction rate using lt_11 lead time
+  const calcAdjustedRate = (students, histStats) => {
+    // ch1-based baseline
+    const baseCr = students.reduce((sum, r) =>
+      sum + (r.lt_ch1 !== null ? (histStats.crWithCh1 ?? 70) / 100 : (histStats.crWithoutCh1 ?? 30) / 100), 0);
+    const baseRate = students.length ? baseCr / students.length * 100 : null;
+
+    // lt_11 speed adjustment
+    const cohortLt11 = avg(students.filter(r => r.lt_11 !== null).map(r => r.lt_11));
+    if (cohortLt11 !== null && histStats.avgLt11 !== null && histStats.avgLt11 > 0) {
+      const speedRatio = histStats.avgLt11 / cohortLt11; // >1 = faster cohort
+      const adjusted = (histStats.crWithLt11 ?? baseRate ?? 60) * Math.min(1.25, Math.max(0.5, speedRatio));
+      return { rate: Math.min(99, Math.max(5, adjusted)), usedLt11: true, cohortLt11, histLt11: histStats.avgLt11, histCr: histStats.crWithLt11 };
+    }
+    return { rate: baseRate, usedLt11: false, cohortLt11: null, histLt11: histStats.avgLt11, histCr: histStats.crWithLt11 };
+  };
+
+  // Insight text generator
+  const buildInsight = (students, histStats, pred) => {
+    const lines = [];
+    const lt11Students = students.filter(r => r.lt_11 !== null);
+    const ch1Students  = students.filter(r => r.lt_ch1 !== null);
+
+    if (pred.usedLt11 && pred.cohortLt11 !== null && pred.histLt11 !== null) {
+      const histCrStr = pred.histCr !== null ? ` (이수자 과거 수료율 ${pred.histCr.toFixed(0)}%)` : '';
+      const cohortStr = fmtH(pred.cohortLt11, 0);
+      const histStr   = fmtH(pred.histLt11, 0);
+      const ratio = (pred.cohortLt11 - pred.histLt11) / pred.histLt11 * 100;
+      const signal = Math.abs(ratio) < 5 ? '과거와 유사' : ratio < 0 ? `과거보다 ${Math.abs(ratio).toFixed(0)}% 빠름 — 수료 유리한 신호` : `과거보다 ${ratio.toFixed(0)}% 느림 — 수료율 소폭 하락 예상`;
+      lines.push(`1-1강 이수 LT: 이 회차 <strong>${cohortStr}</strong> vs 과거 평균 <strong>${histStr}</strong>${histCrStr} → ${signal}`);
+    } else if (pred.histLt11 !== null) {
+      const lt11Rate = students.length ? lt11Students.length / students.length * 100 : 0;
+      if (lt11Rate === 0) {
+        lines.push(`아직 1-1강 이수자 없음 — 과거 이수자 LT 평균: <strong>${fmtH(pred.histLt11, 0)}</strong>`);
+      } else {
+        lines.push(`1-1강 이수자 ${lt11Students.length}명의 LT 집계 중 (과거 평균 ${fmtH(pred.histLt11, 0)})`);
+      }
+    }
+
+    if (ch1Students.length > 0 && histStats.avgCh1 !== null) {
+      const cohortCh1 = avg(ch1Students.map(r => r.lt_ch1));
+      const ratio2 = (cohortCh1 - histStats.avgCh1) / histStats.avgCh1 * 100;
+      const signal2 = Math.abs(ratio2) < 5 ? '과거와 유사' : ratio2 < 0 ? `${Math.abs(ratio2).toFixed(0)}% 빠름` : `${ratio2.toFixed(0)}% 느림`;
+      lines.push(`1챕터 완료 LT: 이 회차 <strong>${fmtH(cohortCh1, 0)}</strong> vs 과거 평균 <strong>${fmtH(histStats.avgCh1, 0)}</strong> → ${signal2}`);
+    } else if (histStats.avgCh1 !== null && ch1Students.length === 0) {
+      lines.push(`1챕터 완료자 아직 없음 — 과거 평균 LT: <strong>${fmtH(histStats.avgCh1, 0)}</strong>`);
+    }
+
+    return lines.length ? lines.map(l => `<div style="font-size:11px;color:#475569;line-height:1.7;padding:2px 0;">${l}</div>`).join('') : '';
+  };
+
   const courseCards = Object.keys(courseGroups).sort(sortByCourse).map(course => {
-    const cohorts = courseGroups[course];
-    const cohortKeys = Object.keys(cohorts).sort().reverse(); // newest first
+    const cohorts    = courseGroups[course];
+    const cohortKeys = Object.keys(cohorts).sort().reverse();
     const allStudents = cohortKeys.flatMap(ck => cohorts[ck]);
     const totalN = allStudents.length;
     const riskN  = allStudents.filter(isRisk).length;
     const pid = courseProductMap[course] || '';
     const pidBadge = pid ? `<span style="font-size:10px;color:#94A3B8;background:#F1F5F9;border-radius:3px;padding:1px 5px;margin-right:5px;">${pid}</span>` : '';
+    const histStats = getHistCourseStats(course);
 
     const cohortRows = cohortKeys.map(ck => {
-      const students = cohorts[ck];
-      const n       = students.length;
-      const riskN2  = students.filter(isRisk).length;
-      const lt11N   = students.filter(r => r.lt_11  !== null).length;
-      const ch1N    = students.filter(r => r.lt_ch1 !== null).length;
+      const students   = cohorts[ck];
+      const n          = students.length;
+      const riskN2     = students.filter(isRisk).length;
+      const lt11N      = students.filter(r => r.lt_11  !== null).length;
+      const ch1N       = students.filter(r => r.lt_ch1 !== null).length;
       const cAvgProg   = avg(students.map(r => r.progress));
       const cAvgPosPct = avg(students.map(r => getCoursePct(r)));
-      // Days since earliest courseStart in this cohort
+      const cAvgLt11   = avg(students.filter(r => r.lt_11  !== null).map(r => r.lt_11));
+      const cAvgCh1    = avg(students.filter(r => r.lt_ch1 !== null).map(r => r.lt_ch1));
       const starts     = students.map(r => r.courseStart).filter(Boolean);
       const daysSince  = starts.length ? Math.floor((now - new Date(Math.min(...starts.map(d => d.getTime())))) / 86400000) : null;
 
-      // Phase bar
-      const phases = ['early','mid','late'].map(ph => ({
-        key: ph, n: students.filter(r => getPhase(r) === ph).length, color: PHASE_COLORS[ph]
-      })).filter(p => p.n > 0);
-      const unknN = n - phases.reduce((s, p) => s + p.n, 0);
-      const phaseBarSegs = phases.map(p =>
-        `<div class="rt-phase-seg" style="flex:${p.n};background:${p.color};" title="${PHASE_LABELS[p.key]}: ${p.n}명">${p.n >= 2 ? p.n : ''}</div>`
-      ).join('');
+      // Predicted completion rate (lt_11-adjusted when possible)
+      const pred     = calcAdjustedRate(students, histStats);
+      const expRateC = pred.rate;
+
+      // Phase bar (compact, single line)
+      const phases  = ['early','mid','late'].map(ph => ({ key:ph, n:students.filter(r=>getPhase(r)===ph).length, color:PHASE_COLORS[ph] })).filter(p=>p.n>0);
+      const unknN   = n - phases.reduce((s,p)=>s+p.n,0);
+      const phaseSegs = phases.map(p=>`<div class="rt-phase-seg" style="flex:${p.n};background:${p.color};" title="${PHASE_LABELS[p.key]}: ${p.n}명">${p.n>=2?p.n:''}</div>`).join('');
       const phaseBar = n > 0
-        ? `<div class="rt-phase-bar" style="height:12px;margin:4px 0 2px;">${phaseBarSegs}${unknN>0?`<div class="rt-phase-seg" style="flex:${unknN};background:#CBD5E1;"></div>`:''}</div>`
+        ? `<div class="rt-phase-bar" style="height:10px;margin:0;flex:1;">${phaseSegs}${unknN>0?`<div class="rt-phase-seg" style="flex:${unknN};background:#E2E8F0;"></div>`:''}</div>`
         : '';
 
-      // Expected completion for cohort (ch1-based)
-      const cExpComp = (crWithCh1 !== null || crWithoutCh1 !== null)
-        ? students.reduce((sum, r) => sum + (r.lt_ch1 !== null ? (crWithCh1 ?? 70) / 100 : (crWithoutCh1 ?? 30) / 100), 0)
-        : null;
-      const cExpRate = cExpComp !== null ? cExpComp / n * 100 : null;
-
       const label = ck === 'unknown' ? '기간 미상' : fmtPeriodLabel(ck);
-      const posColor = cAvgPosPct !== null && cAvgPosPct >= 67 ? '#F97316' : cAvgPosPct !== null && cAvgPosPct >= 33 ? '#0064B4' : '#059669';
-      return `<div style="border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin-bottom:8px;background:#FAFCFF;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:4px;">
+      const phaseLabel = cAvgPosPct !== null ? `${PHASE_LABELS[cAvgPosPct<33?'early':cAvgPosPct<67?'mid':'late']} (${cAvgPosPct.toFixed(0)}%)` : '';
+      const insightHtml = buildInsight(students, histStats, pred);
+      const expColor = expRateC !== null ? (expRateC >= 70 ? '#059669' : expRateC >= 50 ? '#F97316' : '#EF4444') : '#94A3B8';
+
+      return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#FAFCFF;">
+        <!-- Row 1: header -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:12px;font-weight:700;color:#003566;background:#EEF2FF;border-radius:4px;padding:1px 8px;">${label}</span>
-            ${daysSince !== null ? `<span style="font-size:11px;color:#64748B;">${daysSince}일 경과</span>` : ''}
-            <span style="font-size:12px;font-weight:700;color:#1E293B;">${n}명</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;font-weight:700;color:#003566;background:#EEF2FF;border-radius:4px;padding:2px 9px;">${label}</span>
+            ${daysSince !== null ? `<span style="font-size:11px;color:#94A3B8;">${daysSince}일 경과</span>` : ''}
+            <span style="font-size:12px;font-weight:700;color:#475569;">${n}명</span>
             ${riskN2 > 0 ? `<span class="rt-risk-badge">⚠ 위험 ${riskN2}명</span>` : ''}
-            ${cExpRate !== null ? `<span style="font-size:11px;color:#7C3AED;font-weight:700;">예상수료 ${cExpRate.toFixed(0)}%</span>` : ''}
+          </div>
+          <!-- BIG predicted rate -->
+          ${expRateC !== null ? `<div style="text-align:right;">
+            <div style="font-size:10px;color:#94A3B8;font-weight:600;letter-spacing:0.3px;margin-bottom:1px;">예상 수료율</div>
+            <div style="font-size:28px;font-weight:900;color:${expColor};line-height:1;">${expRateC.toFixed(0)}<span style="font-size:15px;">%</span></div>
+          </div>` : ''}
+        </div>
+        <!-- Row 2: phase bar + phase label -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          ${phaseBar}
+          ${phaseLabel ? `<span style="font-size:10px;color:#64748B;white-space:nowrap;">${phaseLabel}</span>` : ''}
+        </div>
+        <!-- Row 3: Lead time metrics -->
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">1-1강 이수</span>
+            ${miniBar(lt11N / n * 100, '#003566')}
+            <span style="font-size:11px;font-weight:700;color:#003566;white-space:nowrap;width:32px;">${lt11N}/${n}</span>
+            <span style="font-size:11px;color:#1E293B;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgLt11 !== null ? fmtH(cAvgLt11,0) : '–'}</span>
+            ${ltDeltaBadge(cAvgLt11, histStats.avgLt11)}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">1챕터 완료</span>
+            ${miniBar(ch1N / n * 100, '#0064B4')}
+            <span style="font-size:11px;font-weight:700;color:#0064B4;white-space:nowrap;width:32px;">${ch1N}/${n}</span>
+            <span style="font-size:11px;color:#1E293B;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgCh1 !== null ? fmtH(cAvgCh1,0) : '–'}</span>
+            ${ltDeltaBadge(cAvgCh1, histStats.avgCh1)}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">진도율</span>
+            ${miniBar(cAvgProg, '#94A3B8')}
+            <span style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;width:32px;"> </span>
+            <span style="font-size:11px;color:#475569;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgProg !== null ? cAvgProg.toFixed(0)+'%' : '–'}</span>
           </div>
         </div>
-        ${phaseBar}
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">
-          <div>
-            <div style="font-size:10px;color:#94A3B8;margin-bottom:3px;">1-1강 이수</div>
-            ${mkProgressBar(lt11N, n, '#003566')}
-          </div>
-          <div>
-            <div style="font-size:10px;color:#94A3B8;margin-bottom:3px;">1챕터 완료</div>
-            ${mkProgressBar(ch1N, n, '#0064B4')}
-          </div>
-          <div>
-            <div style="font-size:10px;color:#94A3B8;margin-bottom:3px;">평균 진도율</div>
-            <div style="display:flex;align-items:center;gap:4px;">
-              <div class="rt-progress-wrap" style="flex:1;"><div class="rt-progress-fill" style="width:${cAvgProg??0}%;background:#94A3B8;"></div></div>
-              <span style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;">${cAvgProg!==null?cAvgProg.toFixed(0)+'%':'–'}</span>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:10px;color:#94A3B8;margin-bottom:3px;">수강 경과</div>
-            <div style="font-size:14px;font-weight:800;color:${posColor};">${cAvgPosPct !== null ? cAvgPosPct.toFixed(0)+'%' : '–'}</div>
-          </div>
-        </div>
+        <!-- Row 4: Insight text -->
+        ${insightHtml ? `<div style="background:#F8FAFC;border-left:3px solid #CBD5E1;border-radius:0 6px 6px 0;padding:8px 12px;">${insightHtml}</div>` : ''}
       </div>`;
     }).join('');
+
+    // Course-level historical summary
+    const histSummary = histStats.total > 0 ? `<div style="font-size:10px;color:#94A3B8;margin-bottom:10px;">
+      과거 수강 종료 ${histStats.total}명 기준 —
+      ${histStats.avgLt11 !== null ? `1-1강 이수 LT 평균: <strong style="color:#475569;">${fmtH(histStats.avgLt11,0)}</strong> (이수자 수료율 ${histStats.crWithLt11?.toFixed(0)??'–'}%)` : ''}
+      ${histStats.avgCh1  !== null ? ` · 1챕터 완료 LT 평균: <strong style="color:#475569;">${fmtH(histStats.avgCh1,0)}</strong>` : ''}
+    </div>` : '';
 
     return `<div class="rt-course-card">
       <div class="rt-course-head">
@@ -2717,30 +2822,20 @@ function renderRealtime() {
           <span style="font-size:12px;font-weight:700;color:#1E293B;">총 ${totalN}명 · ${cohortKeys.length}개 회차</span>
         </div>
       </div>
+      ${histSummary}
       ${cohortRows}
     </div>`;
   }).join('');
-
-  // Prediction model box
-  const predModelHtml = (crWithCh1 !== null || crWithoutCh1 !== null) ? `
-    <div class="rt-predict-box">
-      <div style="font-weight:700;color:#003566;margin-bottom:6px;">📊 예상 수료율 추산 모델 (역사적 데이터 기반)</div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;">
-        ${crWithCh1    !== null ? `<span>1챕터 완료 후 수료율: <strong>${crWithCh1.toFixed(1)}%</strong> (${histWithCh1.length}명 기준)</span>` : ''}
-        ${crWithoutCh1 !== null ? `<span>1챕터 미완료 후 수료율: <strong>${crWithoutCh1.toFixed(1)}%</strong> (${histWithoutCh1.length}명 기준)</span>` : ''}
-      </div>
-      <div style="margin-top:6px;color:#94A3B8;font-size:10px;">※ 1챕터 완료 여부와 최종 수료율의 상관관계 기반 추산이며 인과관계를 보장하지 않습니다.</div>
-    </div>` : '';
 
   if (!totalActive) {
     body.innerHTML = `<div style="text-align:center;padding:40px;">
       <div style="font-size:14px;color:#64748B;margin-bottom:8px;">현재 수강 기간 중인 수강생이 없습니다.</div>
       <div style="font-size:12px;color:#94A3B8;">데이터 기준: courseStart ≤ 오늘 &lt; courseEnd</div>
-    </div>${predModelHtml}`;
+    </div>`;
     return;
   }
 
-  body.innerHTML = summaryHtml + (courseCards || '<div style="color:#94A3B8;text-align:center;padding:24px;">강의별 데이터 없음</div>') + predModelHtml;
+  body.innerHTML = summaryHtml + (courseCards || '<div style="color:#94A3B8;text-align:center;padding:24px;">강의별 데이터 없음</div>');
 }
 
 // ── Main deploy analysis render ──
