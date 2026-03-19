@@ -876,23 +876,22 @@ async function loadPriceData() {
   } catch { /* 가격 로드 실패 시 매출 컬럼만 표시 안 됨 */ }
 }
 
-// 수강생 1명의 예상 매출 = 완강(수료+progress≥100) 시 단가 100%, 그 외 단가 × 진도율%
+// 수강생 1명의 예상 매출 = 수료 시 단가 100%, 미수료 시 단가 × 진도율%
 function calcRevenue(r) {
   const price = priceMap[r.productId];
   if (!price) return null;
-  return (r.isCompleted && r.progress >= 100) ? price : price * (r.progress / 100);
+  return r.isCompleted ? price : price * (r.progress / 100);
 }
 
-// 단가 실현율: R = α + (1-α) × β
-// α = 완강율(완강자÷수강기간종료), β = 비완강자 평균 진도율(0~1)
-// 완강자 = isCompleted AND progress ≥ 100
+// 단가 실현율: R = 수료율 + (1 - 수료율) × 미수료자 평균 진도율
+// 수료 → 단가 100% 실현, 미수료 → 진도율만큼 실현
 function calcPriceRealization(students) {
-  if (!students.length) return { R: null, alpha: null, beta: null };
-  const wangang    = students.filter(r => r.isCompleted && r.progress >= 100);
-  const nonWangang = students.filter(r => !(r.isCompleted && r.progress >= 100));
-  const alpha = wangang.length / students.length;
-  const beta  = nonWangang.length ? avg(nonWangang.map(r => r.progress)) / 100 : 0;
-  return { R: alpha + (1 - alpha) * beta, alpha, beta };
+  if (!students.length) return { R: null, crRate: null, ncAvgProg: null };
+  const completed    = students.filter(r => r.isCompleted);
+  const notCompleted = students.filter(r => !r.isCompleted);
+  const crRate    = completed.length / students.length;
+  const ncAvgProg = notCompleted.length ? avg(notCompleted.map(r => r.progress)) / 100 : 0;
+  return { R: crRate + (1 - crRate) * ncAvgProg, crRate, ncAvgProg };
 }
 
 function fmtKrWon(v) {
@@ -973,7 +972,7 @@ function renderKPIs(data) {
   const srPctAll = base.length ? (seniors.length / base.length * 100) : null;
   const completedEl = baseEl.filter(r => r.isCompleted);
   const completeRate = completedEl.length ? (completedEl.filter(r => r.progress >= 100).length / completedEl.length * 100) : null;
-  const { R: priceReal, alpha: priceRealAlpha, beta: priceRealBeta } = calcPriceRealization(baseEl);
+  const { R: priceReal, crRate: priceRealCr, ncAvgProg: priceRealNc } = calcPriceRealization(baseEl);
 
   // 아이콘 SVG (18×18, stroke-based)
   const IC = {
@@ -1006,7 +1005,7 @@ function renderKPIs(data) {
   ];
   // Row 2: 수료율/매출 (6 columns)
   const priceRealSub = priceReal !== null
-    ? `완강율 ${(priceRealAlpha*100).toFixed(0)}% · 비완강 진도율 ${(priceRealBeta*100).toFixed(0)}%`
+    ? `수료율 ${(priceRealCr*100).toFixed(0)}% · 미수료자 진도율 ${(priceRealNc*100).toFixed(0)}%`
     : `수강기간 종료 ${baseEl.length}명 기준`;
   const row2Cards = [
     { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
