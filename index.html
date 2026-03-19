@@ -298,6 +298,25 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 .deploy-manage-layout { display: grid; grid-template-columns: 260px 1fr; gap: 24px; }
 @media (max-width: 740px) { .deploy-manage-layout { grid-template-columns: 1fr; } }
 
+/* ── Realtime tab ── */
+.rt-summary-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+.rt-summary-card { background: #F8FAFC; border-radius: 8px; padding: 12px 16px; text-align: center; border: 1px solid rgba(0,53,102,0.07); }
+.rt-summary-val { font-size: 26px; font-weight: 800; color: #1E293B; letter-spacing: -0.5px; line-height: 1.1; }
+.rt-summary-lbl { font-size: 11px; color: #64748B; font-weight: 600; margin-top: 3px; }
+.rt-course-card { border: 1px solid rgba(0,53,102,0.08); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.rt-course-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rt-course-name { font-size: 13px; font-weight: 700; color: #1E293B; }
+.rt-risk-badge { background: #FEF2F2; color: #EF4444; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; }
+.rt-phase-bar { display: flex; height: 22px; border-radius: 5px; overflow: hidden; gap: 2px; margin: 6px 0; }
+.rt-phase-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: white; transition: flex 0.3s; min-width: 0; overflow: hidden; }
+.rt-stats-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px; }
+.rt-stat { display: flex; flex-direction: column; gap: 1px; }
+.rt-stat-val { font-size: 16px; font-weight: 800; color: #1E293B; }
+.rt-stat-lbl { font-size: 10px; color: #94A3B8; font-weight: 500; }
+.rt-progress-wrap { background: #F1F5F9; border-radius: 4px; height: 8px; overflow: hidden; flex: 1; }
+.rt-progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.rt-predict-box { background: #EEF2FF; border-radius: 8px; padding: 12px 16px; margin-top: 16px; font-size: 12px; color: #334155; }
+.rt-predict-box strong { color: #003566; }
 /* ── Tab navigation ── */
 .tab-nav { display: flex; gap: 0; padding: 0; border-top: 1px solid rgba(255,255,255,0.15); margin-top: 6px; }
 .tab-btn { background: transparent; border: none; color: rgba(255,255,255,0.55); font-size: 13px; font-weight: 600; padding: 9px 18px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; font-family: inherit; }
@@ -352,6 +371,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
       <div class="tab-nav">
         <button class="tab-btn active" id="tab-main" onclick="switchTab('main')">대시보드</button>
         <button class="tab-btn" id="tab-deploy" onclick="switchTab('deploy')">배포 분석</button>
+        <button class="tab-btn" id="tab-realtime" onclick="switchTab('realtime')">실시간 ●</button>
       </div>
     </div>
   </div>
@@ -624,6 +644,21 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 
       </div><!-- /tab-pane-deploy -->
 
+      <div id="tab-pane-realtime" class="tab-pane">
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-title">실시간 수강 현황</div>
+              <div class="section-sub" id="realtime-subtitle">현재 수강 기간 중인 수강생 · 수강 구간 · 이탈 위험군</div>
+            </div>
+            <div style="font-size:11px;color:#94A3B8;" id="realtime-updated"></div>
+          </div>
+          <div class="section-body" id="realtime-body">
+            <div style="text-align:center;color:#94A3B8;padding:32px;font-size:13px;">탭을 클릭하면 현재 수강 데이터를 분석합니다.</div>
+          </div>
+        </div>
+      </div><!-- /tab-pane-realtime -->
+
     </div>
   </div>
 </div>
@@ -692,13 +727,14 @@ let cmpSeniorFilter  = 'all';
 const filters = { senior: 'all', period: 'month', metric: 'lt_11', completion: 'all' };
 
 function switchTab(name) {
-  document.getElementById('tab-main').classList.toggle('active', name === 'main');
-  document.getElementById('tab-deploy').classList.toggle('active', name === 'deploy');
-  document.getElementById('tab-pane-main').classList.toggle('active', name === 'main');
-  document.getElementById('tab-pane-deploy').classList.toggle('active', name === 'deploy');
+  ['main','deploy','realtime'].forEach(t => {
+    document.getElementById('tab-'+t)?.classList.toggle('active', name === t);
+    document.getElementById('tab-pane-'+t)?.classList.toggle('active', name === t);
+  });
   const fb = document.getElementById('main-filter-bar');
   if (fb) fb.style.display = name === 'main' ? '' : 'none';
   if (name === 'deploy') renderDeployAnalysis();
+  if (name === 'realtime') renderRealtime();
 }
 
 function sortByCourse(a, b) {
@@ -2471,6 +2507,206 @@ function renderDeployDetailRow(note, bef, aft) {
       </div>
     </div>
   </td></tr>`;
+}
+
+// ════════════════════════════════════
+// Realtime tab
+// ════════════════════════════════════
+function renderRealtime() {
+  const body = document.getElementById('realtime-body');
+  const updatedEl = document.getElementById('realtime-updated');
+  if (!body) return;
+
+  const now = new Date();
+  if (updatedEl) updatedEl.textContent = `기준: ${now.toLocaleString('ko-KR', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`;
+
+  // All raw data (no date/completion filters — realtime is based on "now")
+  const all = lastLoaded || [];
+  if (!all.length) {
+    body.innerHTML = '<div style="text-align:center;color:#94A3B8;padding:32px;">데이터가 없습니다.</div>';
+    return;
+  }
+
+  // Active students: courseStart <= now, courseEnd >= now (not ended), unique by enrollId
+  const active = all.filter(r => r.courseStart && r.courseStart <= now && !r.courseEnded && r.courseEnd);
+  const uniqueActive = [...new Map(active.map(r => [r.enrollId, r])).values()];
+
+  // Historical closed students for prediction model
+  const historical = all.filter(r => r.courseEnded);
+
+  // 1-1강 이수 여부별 수료율 (예측 모델)
+  const histWithLt11 = historical.filter(r => r.lt_11 !== null);
+  const histWithoutLt11 = historical.filter(r => r.lt_11 === null);
+  const crWithLt11 = histWithLt11.length ? histWithLt11.filter(r => r.isCompleted).length / histWithLt11.length * 100 : null;
+  const crWithoutLt11 = histWithoutLt11.length ? histWithoutLt11.filter(r => r.isCompleted).length / histWithoutLt11.length * 100 : null;
+
+  // Phase helpers
+  const getCoursePct = r => {
+    if (!r.courseStart || !r.courseEnd) return null;
+    const total = r.courseEnd - r.courseStart;
+    if (total <= 0) return null;
+    return Math.min(100, Math.max(0, (now - r.courseStart) / total * 100));
+  };
+  const getPhase = r => {
+    const p = getCoursePct(r);
+    if (p === null) return null;
+    if (p < 33) return 'early';
+    if (p < 67) return 'mid';
+    return 'late';
+  };
+  const PHASE_LABELS = { early: '초반 (0~33%)', mid: '중반 (33~67%)', late: '후반 (67~100%)' };
+  const PHASE_COLORS = { early: '#059669', mid: '#0064B4', late: '#F97316' };
+
+  // Risk: started 7+ days ago AND lt_11 === null
+  const isRisk = r => {
+    const days = (now - r.courseStart) / 86400000;
+    return days >= 7 && r.lt_11 === null;
+  };
+
+  // Summary stats
+  const totalActive = uniqueActive.length;
+  const riskCount = uniqueActive.filter(isRisk).length;
+  const lt11Count = uniqueActive.filter(r => r.lt_11 !== null).length;
+  const lt11Rate = totalActive ? lt11Count / totalActive * 100 : null;
+  const avgProg = avg(uniqueActive.map(r => r.progress));
+
+  // Expected completions
+  const expComp = totalActive && (crWithLt11 !== null || crWithoutLt11 !== null)
+    ? uniqueActive.reduce((sum, r) => {
+        if (r.lt_11 !== null) return sum + (crWithLt11 !== null ? crWithLt11 / 100 : 0.5);
+        return sum + (crWithoutLt11 !== null ? crWithoutLt11 / 100 : 0.3);
+      }, 0)
+    : null;
+  const expRate = (expComp !== null && totalActive) ? expComp / totalActive * 100 : null;
+
+  // Summary cards
+  const summaryHtml = `<div class="rt-summary-bar">
+    <div class="rt-summary-card">
+      <div class="rt-summary-val" style="color:#003566;">${totalActive.toLocaleString()}</div>
+      <div class="rt-summary-lbl">현재 수강 중</div>
+    </div>
+    <div class="rt-summary-card">
+      <div class="rt-summary-val" style="color:${riskCount > 0 ? '#EF4444' : '#94A3B8'};">${riskCount}</div>
+      <div class="rt-summary-lbl">이탈 위험군<br><span style="font-size:9px;">(7일+ 경과, 1-1강 미이수)</span></div>
+    </div>
+    <div class="rt-summary-card">
+      <div class="rt-summary-val" style="color:#0064B4;">${lt11Rate !== null ? lt11Rate.toFixed(0) + '%' : '–'}</div>
+      <div class="rt-summary-lbl">1-1강 이수율</div>
+    </div>
+    <div class="rt-summary-card">
+      <div class="rt-summary-val" style="color:#7C3AED;">${expRate !== null ? expRate.toFixed(0) + '%' : '–'}</div>
+      <div class="rt-summary-lbl">예상 수료율<br><span style="font-size:9px;">(이수 패턴 기반 추산)</span></div>
+    </div>
+  </div>`;
+
+  // Per-course cards
+  const courseGroups = {};
+  uniqueActive.forEach(r => {
+    if (!r.course) return;
+    if (!courseGroups[r.course]) courseGroups[r.course] = [];
+    courseGroups[r.course].push(r);
+  });
+
+  const courseCards = Object.keys(courseGroups).sort(sortByCourse).map(course => {
+    const students = courseGroups[course];
+    const n = students.length;
+    const earlyN = students.filter(r => getPhase(r) === 'early').length;
+    const midN   = students.filter(r => getPhase(r) === 'mid').length;
+    const lateN  = students.filter(r => getPhase(r) === 'late').length;
+    const unknN  = n - earlyN - midN - lateN;
+    const riskN  = students.filter(isRisk).length;
+    const lt11N  = students.filter(r => r.lt_11 !== null).length;
+    const lt1chN = students.filter(r => r.lt_ch1 !== null).length;
+    const cAvgProg = avg(students.map(r => r.progress));
+    const cAvgPosPct = avg(students.map(r => getCoursePct(r)));
+
+    // Phase bar
+    const phases = [
+      { key: 'early', n: earlyN, color: PHASE_COLORS.early },
+      { key: 'mid',   n: midN,   color: PHASE_COLORS.mid },
+      { key: 'late',  n: lateN,  color: PHASE_COLORS.late },
+    ].filter(p => p.n > 0);
+    const phaseBarSegs = phases.map(p =>
+      `<div class="rt-phase-seg" style="flex:${p.n};background:${p.color};" title="${PHASE_LABELS[p.key]}: ${p.n}명">
+        ${p.n >= 2 ? p.n + '명' : ''}
+      </div>`
+    ).join('');
+    const phaseBar = n > 0
+      ? `<div class="rt-phase-bar">${phaseBarSegs}${unknN>0?`<div class="rt-phase-seg" style="flex:${unknN};background:#CBD5E1;"></div>`:''}</div>`
+      : '';
+    const phaseLegend = phases.map(p =>
+      `<span style="font-size:10px;color:${p.color};font-weight:700;margin-right:8px;">■ ${PHASE_LABELS[p.key]}: ${p.n}명</span>`
+    ).join('');
+
+    // 1-1강 progress bar
+    const lt11Bar = `<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+      <div style="font-size:10px;color:#64748B;white-space:nowrap;width:60px;">1-1강 이수</div>
+      <div class="rt-progress-wrap"><div class="rt-progress-fill" style="width:${n?lt11N/n*100:0}%;background:#003566;"></div></div>
+      <span style="font-size:11px;font-weight:700;color:#003566;white-space:nowrap;">${lt11N}/${n}</span>
+    </div>`;
+    const lt1chBar = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <div style="font-size:10px;color:#64748B;white-space:nowrap;width:60px;">1챕터 완료</div>
+      <div class="rt-progress-wrap"><div class="rt-progress-fill" style="width:${n?lt1chN/n*100:0}%;background:#0064B4;"></div></div>
+      <span style="font-size:11px;font-weight:700;color:#0064B4;white-space:nowrap;">${lt1chN}/${n}</span>
+    </div>`;
+    const progBar = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <div style="font-size:10px;color:#64748B;white-space:nowrap;width:60px;">평균 진도율</div>
+      <div class="rt-progress-wrap"><div class="rt-progress-fill" style="width:${cAvgProg??0}%;background:#94A3B8;"></div></div>
+      <span style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;">${cAvgProg!==null?cAvgProg.toFixed(0)+'%':'–'}</span>
+    </div>`;
+
+    // Course position indicator
+    const posLabel = cAvgPosPct !== null
+      ? `평균 수강 경과: <strong>${cAvgPosPct.toFixed(0)}%</strong> (${cAvgPosPct < 33 ? '초반' : cAvgPosPct < 67 ? '중반' : '후반'})`
+      : '';
+
+    // Expected completions for this course
+    const cExpComp = (crWithLt11 !== null || crWithoutLt11 !== null)
+      ? students.reduce((sum, r) => sum + (r.lt_11 !== null ? (crWithLt11 ?? 50) / 100 : (crWithoutLt11 ?? 30) / 100), 0)
+      : null;
+    const cExpRate = cExpComp !== null ? cExpComp / n * 100 : null;
+
+    const pid = courseProductMap[course] || '';
+    const pidBadge = pid ? `<span style="font-size:10px;color:#94A3B8;background:#F1F5F9;border-radius:3px;padding:1px 5px;margin-right:5px;">${pid}</span>` : '';
+
+    return `<div class="rt-course-card">
+      <div class="rt-course-head">
+        <div class="rt-course-name">${pidBadge}${course}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${riskN > 0 ? `<span class="rt-risk-badge">⚠ 위험군 ${riskN}명</span>` : ''}
+          <span style="font-size:12px;font-weight:700;color:#1E293B;">수강 중 ${n}명</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:#64748B;margin-bottom:4px;">${posLabel}</div>
+      ${phaseBar}
+      <div style="margin-top:4px;">${phaseLegend}</div>
+      <div style="margin-top:12px;">
+        ${lt11Bar}${lt1chBar}${progBar}
+      </div>
+      ${cExpRate !== null ? `<div style="margin-top:10px;font-size:11px;color:#64748B;">예상 수료 <strong style="color:#7C3AED;">${Math.round(cExpComp)}명</strong> (<strong>${cExpRate.toFixed(0)}%</strong>) — 1-1강 이수 패턴 기반 추산</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Prediction model explanation
+  const predModelHtml = (crWithLt11 !== null || crWithoutLt11 !== null) ? `
+    <div class="rt-predict-box">
+      <div style="font-weight:700;color:#003566;margin-bottom:6px;">📊 예상 수료율 추산 모델 (역사적 데이터 기반)</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        ${crWithLt11 !== null ? `<span>1-1강 이수 후 수료율: <strong>${crWithLt11.toFixed(1)}%</strong> (${histWithLt11.length}명 기준)</span>` : ''}
+        ${crWithoutLt11 !== null ? `<span>1-1강 미이수 후 수료율: <strong>${crWithoutLt11.toFixed(1)}%</strong> (${histWithoutLt11.length}명 기준)</span>` : ''}
+      </div>
+      <div style="margin-top:6px;color:#94A3B8;font-size:10px;">※ 상관관계 기반 추산이며 인과관계를 보장하지 않습니다. 시즌·강의 난이도·수강 경험 등 외부 요인이 영향을 줄 수 있습니다.</div>
+    </div>` : '';
+
+  if (!totalActive) {
+    body.innerHTML = `<div style="text-align:center;padding:40px;">
+      <div style="font-size:14px;color:#64748B;margin-bottom:8px;">현재 수강 기간 중인 수강생이 없습니다.</div>
+      <div style="font-size:12px;color:#94A3B8;">데이터 기준: courseStart ≤ 오늘 &lt; courseEnd</div>
+    </div>${predModelHtml}`;
+    return;
+  }
+
+  body.innerHTML = summaryHtml + (courseCards || '<div style="color:#94A3B8;text-align:center;padding:24px;">강의별 데이터 없음</div>') + predModelHtml;
 }
 
 // ── Main deploy analysis render ──
