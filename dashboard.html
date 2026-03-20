@@ -109,10 +109,9 @@ details[open] .gas-guide summary::after { content: '▴'; }
 .content-inner { padding: 0 32px; }
 
 /* ── KPI ── 2-row grid ── */
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-.kpi-row-2 { grid-template-columns: repeat(6, 1fr); margin-bottom: 24px; }
-@media (max-width: 1200px) { .kpi-row-2 { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } .kpi-row-2 { grid-template-columns: repeat(2, 1fr); } }
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
 .kpi-card { background: white; border-radius: 10px; padding: 14px 18px 12px; border: 1px solid rgba(0,53,102,0.08); border-top: 3px solid #E2E8F0; position: relative; overflow: hidden; }
 .kpi-card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .kpi-icon { flex-shrink: 0; opacity: 0.55; }
@@ -120,6 +119,19 @@ details[open] .gas-guide summary::after { content: '▴'; }
 .kpi-value { font-size: 22px; font-weight: 800; color: #1E293B; line-height: 1.2; letter-spacing: -0.5px; }
 .kpi-unit { font-size: 13px; font-weight: 400; color: #94A3B8; }
 .kpi-sub { font-size: 11px; color: #94A3B8; margin-top: 5px; line-height: 1.5; }
+/* KPI card tooltip */
+.kpi-card[data-tip] { cursor: default; }
+.kpi-card[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: #1E293B; color: #F8FAFC; font-size: 11px; line-height: 1.7; white-space: pre-line;
+  padding: 8px 12px; border-radius: 7px; pointer-events: none; z-index: 200;
+  min-width: 200px; max-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+.kpi-card[data-tip]:hover::before {
+  content: ''; position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #1E293B; pointer-events: none; z-index: 200;
+}
 
 /* ── Section card (replaces chart-card) ── */
 .section-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 24px; overflow: hidden; }
@@ -455,7 +467,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 
       <!-- KPI -->
       <div class="kpi-row" id="kpi-row-1"></div>
-      <div class="kpi-row kpi-row-2" id="kpi-row-2"></div>
+      <div class="kpi-row" id="kpi-row-2"></div>
 
       <!-- 핵심지표 추이 Section -->
       <div class="section-card">
@@ -702,7 +714,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 // ════════════════════════════════════
 // ── 배포 전 여기에 URL을 직접 입력하세요 ──────────────────────────────
 const DEFAULT_GAS_URL    = '';  // Google Apps Script URL (스프레드시트 데이터 소스)
-const DEFAULT_WORKER_URL = 'https://leadtime-dashboard.yn-lee.workers.dev';
+const DEFAULT_WORKER_URL = 'https://lx-dashboard.yn-lee.workers.dev';
 // ────────────────────────────────────────────────────────────────────
 const SHEET_ID       = '101oIzi_iNX4cSMrfq-va4T2mJRWxroyYweCgJDbhU2k';
 const SHEET_GID      = '1599933316';
@@ -896,10 +908,10 @@ function calcPriceRealization(students) {
 
 function fmtKrWon(v) {
   if (v === null || v === undefined) return '–';
+  if (v < 0) return '-' + fmtKrWon(-v);
   if (v >= 100000000) return '₩' + (v / 100000000).toFixed(1).replace(/\.0$/, '') + '억';
   if (v >= 10000000)  return '₩' + (v / 10000000).toFixed(1).replace(/\.0$/, '') + '천만';
-  if (v >= 1000000)   return '₩' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + '백만';
-  if (v >= 10000)     return '₩' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '만';
+  if (v >= 10000)     return '₩' + Math.round(v / 10000).toLocaleString('ko-KR') + '만';
   return '₩' + v.toLocaleString('ko-KR');
 }
 
@@ -987,7 +999,7 @@ function renderKPIs(data) {
   };
 
   const renderCard = k => `
-    <div class="kpi-card" style="border-top-color:${k.color};">
+    <div class="kpi-card" style="border-top-color:${k.color};"${k.tip ? ` data-tip="${k.tip.replace(/"/g,'&quot;')}"` : ''}>
       <div class="kpi-card-head" style="color:${k.color};">
         ${k.icon}
         <span class="kpi-title">${k.title}</span>
@@ -996,24 +1008,39 @@ function renderKPIs(data) {
       ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
     </div>`;
 
-  // Row 1: 볼륨/LT (4 columns)
+  // Row 1: 전체수강생 · 시니어비율 · 1-1강LT · 1챕터LT · 수료율 (5 columns)
   const row1Cards = [
-    { icon: IC.users,  color:'#003566', title: compLabel,            val: data.length.toLocaleString(), unit:'명', sub: '' },
-    { icon: IC.pie,    color:'#64748B', title:'시니어 비율',          val: srPctAll !== null ? srPctAll.toFixed(0) : '–', unit: srPctAll !== null ? '%' : '', sub: srPctAll !== null ? `시니어 ${seniors.length}명 / 비시니어 ${base.length - seniors.length}명` : '' },
-    { icon: IC.clock,  color:'#475569', title:'1-1강 이수 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
-    { icon: IC.clock,  color:'#475569', title:'1챕터 완료 LT 평균',  val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    { icon: IC.users,  color:'#003566', title: compLabel,                        val: data.length.toLocaleString(), unit:'명', sub: '' },
+    { icon: IC.pie,    color:'#64748B', title:'시니어 비율',                      val: srPctAll !== null ? srPctAll.toFixed(0) : '–', unit: srPctAll !== null ? '%' : '', sub: srPctAll !== null ? `시니어 ${seniors.length}명 / 비시니어 ${base.length - seniors.length}명` : '' },
+    { icon: IC.clock,  color:'#475569', title:'1-1강 이수 LT 평균',              val: fmtH(avg(data.map(r=>r.lt_11))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    { icon: IC.clock,  color:'#475569', title:'1챕터 완료 LT 평균',              val: fmtH(avg(data.map(r=>r.lt_ch1))), unit:'', sub: compLabel !== '전체 수강생' ? compLabel + ' 기준' : '' },
+    { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)',      val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
   ];
-  // Row 2: 수료율/매출 (6 columns)
+  // Row 2: 평균진도율 · 완강률 · 단가실현율 · 1인당예상매출 · 예상매출(총) (5 columns, with tooltips)
   const priceRealSub = priceReal !== null
     ? `수료율 ${(priceRealCr*100).toFixed(0)}% · 미수료자 진도율 ${(priceRealNc*100).toFixed(0)}%`
     : `수강기간 종료 ${baseEl.length}명 기준`;
   const row2Cards = [
-    { icon: IC.award,  color:'#FA0030', title:'수료율 (수강기간 종료 기준)', val: cr(), unit:'', sub:`수강기간 종료 ${baseEl.length}명 기준` },
-    { icon: IC.trend,  color:'#0064B4', title:'평균 진도율',          val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit: avgProgress !== null ? '%' : '', sub:`수강기간 종료 ${baseEl.length}명 기준` },
-    { icon: IC.flag,   color:'#F97316', title:'완강률',               val: completeRate !== null ? completeRate.toFixed(1) : '–', unit: completeRate !== null ? '%' : '', sub:`수료생 ${completedEl.length}명 기준` },
-    { icon: IC.trend,  color:'#10B981', title:'단가 실현율',           val: priceReal !== null ? (priceReal*100).toFixed(1) : '–', unit: priceReal !== null ? '%' : '', sub: priceRealSub },
-    { icon: IC.coin1,  color:'#7C3AED', title:'1인당 예상 매출',      val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'', sub: hasPrice ? `수강기간 종료 ${baseEl.length}명 기준` : '강의단가 로딩 필요' },
-    { icon: IC.coins,  color:'#059669', title:'예상 매출 (총)',        val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'', sub: hasPrice ? '완강+진도율 기반 추산' : '강의단가 로딩 필요' },
+    { icon: IC.trend,  color:'#0064B4', title:'평균 진도율',
+      val: avgProgress !== null ? avgProgress.toFixed(1) : '–', unit: avgProgress !== null ? '%' : '',
+      sub:`수강기간 종료 ${baseEl.length}명 기준`,
+      tip: '계산식\n수강기간 종료 수강생 전체의\n진도율(%) 단순 평균\n= sum(progress) ÷ N' },
+    { icon: IC.flag,   color:'#F97316', title:'완강률',
+      val: completeRate !== null ? completeRate.toFixed(1) : '–', unit: completeRate !== null ? '%' : '',
+      sub:`수료생 ${completedEl.length}명 기준`,
+      tip: '계산식\n수료생 중 진도율 100% 달성자 비율\n= (수료 AND 진도=100%) ÷ 수료생 수' },
+    { icon: IC.trend,  color:'#10B981', title:'단가 실현율',
+      val: priceReal !== null ? (priceReal*100).toFixed(1) : '–', unit: priceReal !== null ? '%' : '',
+      sub: priceRealSub,
+      tip: '계산식\nR = 수료율 + (1 - 수료율) × 미수료자 평균 진도율\n수료 → 단가 100% 실현\n미수료 → 진도율만큼 실현\n최대값 1.0 (= 100%)' },
+    { icon: IC.coin1,  color:'#7C3AED', title:'1인당 예상 매출',
+      val: revPerStudent !== null ? fmtKrWon(Math.round(revPerStudent)) : '–', unit:'',
+      sub: hasPrice ? `수강기간 종료 ${baseEl.length}명 기준` : '강의단가 로딩 필요',
+      tip: '계산식\n수강생 1인당 예상 매출\n= Σ(수료→단가 / 미수료→단가×진도율) ÷ N\n강의단가 설정 필요' },
+    { icon: IC.coins,  color:'#059669', title:'예상 매출 (총)',
+      val: hasPrice ? fmtKrWon(Math.round(totalRevenue)) : '–', unit:'',
+      sub: hasPrice ? '완강+진도율 기반 추산' : '강의단가 로딩 필요',
+      tip: '계산식\n전체 수강생 예상 매출 합산\n= Σ(수료→단가 / 미수료→단가×진도율)\n강의단가 설정 필요' },
   ];
   document.getElementById('kpi-row-1').innerHTML = row1Cards.map(renderCard).join('');
   document.getElementById('kpi-row-2').innerHTML = row2Cards.map(renderCard).join('');
@@ -1283,10 +1310,10 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, completionRate
       <th style="min-width:90px;text-align:left;padding:6px 10px;background:#F8FAFC;">${filters.period === 'month' ? '월' : '주'}</th>
       <th style="background:#F8FAFC;">수강생</th>
       <th style="background:#F8FAFC;">수료율</th>
-      <th style="color:#F97316;background:#F8FAFC;">완강률</th>
       <th style="color:#0064B4;background:#F8FAFC;">평균 진도율</th>
+      <th style="color:#F97316;background:#F8FAFC;">완강률</th>
       <th style="color:#10B981;background:#F8FAFC;">단가 실현율</th>
-      ${hasPrice ? `<th style="color:#059669;background:#F8FAFC;">총 매출</th><th style="color:#7C3AED;background:#F8FAFC;">1인당 매출</th>` : ''}
+      ${hasPrice ? `<th style="color:#7C3AED;background:#F8FAFC;">1인당 예상 매출</th><th style="color:#059669;background:#F8FAFC;">예상 매출 (총)</th>` : ''}
     </tr>
   </thead>`;
 
@@ -1315,15 +1342,15 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, completionRate
       const cRev = hasPrice ? c.all.reduce((sum, r) => { const v = calcRevenue(r); return sum + (v !== null ? v : 0); }, 0) : null;
       const cRps = (hasPrice && c.ended.length && cRevEnded !== null) ? (cRevEnded / c.ended.length) : null;
       const revSubTd = hasPrice
-        ? `<td style="font-size:11px;color:#059669;">${cRev !== null ? fmtKrWon(Math.round(cRev)) : '–'}</td><td style="font-size:11px;color:#7C3AED;">${cRps !== null ? fmtKrWon(Math.round(cRps)) : '–'}</td>`
+        ? `<td style="font-size:11px;color:#7C3AED;">${cRps !== null ? fmtKrWon(Math.round(cRps)) : '–'}</td><td style="font-size:11px;color:#059669;">${cRev !== null ? fmtKrWon(Math.round(cRev)) : '–'}</td>`
         : '';
       const pid = courseProductMap[course] || '';
       const courseName = pid ? `<span style="font-size:10px;color:#94A3B8;background:#F1F5F9;border-radius:3px;padding:0 3px;margin-right:3px;">${pid}</span>${course}` : course;
       return `<td style="padding:4px 10px 4px 22px;font-size:11px;color:#475569;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${course}">${courseName}</td>
         <td style="font-size:11px;">${c.all.length}</td>
         <td style="font-size:11px;">${cCr !== null ? cCr.toFixed(1) + '%' : '–'}</td>
-        <td style="font-size:11px;color:#F97316;">${cWancr !== null ? cWancr.toFixed(1) + '%' : '–'}</td>
         <td style="font-size:11px;color:#0064B4;">${cProg !== null ? cProg.toFixed(1) + '%' : '–'}</td>
+        <td style="font-size:11px;color:#F97316;">${cWancr !== null ? cWancr.toFixed(1) + '%' : '–'}</td>
         <td style="font-size:11px;color:#10B981;font-weight:700;">${cPReal !== null ? (cPReal*100).toFixed(1)+'%' : '–'}</td>
         ${revSubTd}`;
     }).filter(Boolean);
@@ -1334,7 +1361,7 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, completionRate
       ? `<span style="font-size:10px;color:#F97316;margin-left:6px;">🚀 ${_kpiDeployAtLabel[lbl].join(' / ')}</span>`
       : '';
     const revSumTd = hasPrice
-      ? `<td style="color:#059669;font-weight:700;">${rev !== null ? fmtKrWon(Math.round(rev)) : '–'}</td><td style="color:#7C3AED;font-weight:700;">${rps !== null ? fmtKrWon(Math.round(rps)) : '–'}</td>`
+      ? `<td style="color:#7C3AED;font-weight:700;">${rps !== null ? fmtKrWon(Math.round(rps)) : '–'}</td><td style="color:#059669;font-weight:700;">${rev !== null ? fmtKrWon(Math.round(rev)) : '–'}</td>`
       : '';
     const pRealTd = `<td style="color:#10B981;font-weight:700;">${pReal !== null ? (pReal*100).toFixed(1)+'%' : '–'}</td>`;
     const hasSubs = courseSubRowsCells.length > 0;
@@ -1350,8 +1377,8 @@ function renderKpiTrendTable(labels, periodMap, crData, progData, completionRate
     return `<tr style="background:white;border-top:2px solid #E2E8F0;">${titleCell}
       <td style="font-weight:700;">${all.length}</td>
       <td style="font-weight:700;">${cr !== null ? cr.toFixed(1) + '%' : '–'}</td>
-      <td style="font-weight:700;color:#F97316;">${wancr !== null ? wancr.toFixed(1) + '%' : '–'}</td>
       <td style="font-weight:700;color:#0064B4;">${prog !== null ? prog.toFixed(1) + '%' : '–'}</td>
+      <td style="font-weight:700;color:#F97316;">${wancr !== null ? wancr.toFixed(1) + '%' : '–'}</td>
       ${pRealTd}
       ${revSumTd}
     </tr>${subRowsHtml}`;
@@ -2119,12 +2146,13 @@ ${deployLines}
 이 데이터를 바탕으로 아래 관점에서 한국어로 인사이트를 도출해주세요:
 
 1. 수료율 · 완강률 · 평균 진도율 사이의 관계 — 세 지표가 함께 움직이는 패턴, 또는 따로 움직이는 구간과 그 의미
-2. 총 매출 · 1인당 매출에 미친 영향 — 볼륨(수강생 수) 변화와 품질(1인당 매출) 변화 중 어느 쪽이 더 큰 영향을 미쳤는지
+2. 총 매출 · 1인당 매출에 미친 영향 — 볼륨(수강생 수) 변화와 품질(1인당 매출) 변화 중 어느 쪽이 더 큰 영향을 미쳤는지. **단, 볼륨(수강생 수) 증감은 우리 서비스(결제 후 접근)의 기여도가 매우 낮음을 전제로 해석할 것** — 볼륨 확대를 우리 제품 성과로 간주하지 말 것
 3. 배포 이벤트와의 연관성 — 특정 배포 후 지표가 눈에 띄게 변했다면 언급하되, 인과관계가 아닌 상관 가능성임을 명시
-4. 담당자가 다음 단계로 확인해볼 가설 또는 액션 아이템 1~2가지
+4. 여러 강의(상품)가 포함된 경우, **각 강의 간 수료율·진도율·1인당 매출 차이**를 위주로 분석할 것 — 강의별 특성 차이에서 개선 힌트를 찾을 것
+5. 담당자가 다음 단계로 확인해볼 가설 또는 액션 아이템 1~2가지
 
 작성 규칙:
-- 전체 12줄 내외로 작성할 것
+- 전체 14줄 내외로 작성할 것
 - 불렛(-)과 **굵게** 등 마크다운으로 가독성을 높일 것
 - 강의명은 반드시 <강의명> 형식(꺾쇠 안에 실제 강의명)으로 표기할 것 — 새로 생성 금지
 - 데이터가 없는 항목(매출 등)은 분석에서 제외할 것`;
@@ -2662,22 +2690,22 @@ function renderRealtime() {
   const expRate = (expComp !== null && totalActive) ? expComp / totalActive * 100 : null;
 
   // Summary bar
-  const summaryHtml = `<div class="rt-summary-bar">
+  const summaryHtml = `<div class="rt-summary-bar" style="margin-bottom:24px;">
     <div class="rt-summary-card">
-      <div class="rt-summary-val" style="color:#003566;">${totalActive.toLocaleString()}</div>
-      <div class="rt-summary-lbl">현재 수강 중</div>
+      <div class="rt-summary-val" style="color:#003566;font-size:32px;">${totalActive.toLocaleString()}</div>
+      <div class="rt-summary-lbl" style="font-size:13px;">현재 수강 중</div>
     </div>
     <div class="rt-summary-card">
-      <div class="rt-summary-val" style="color:${riskCount > 0 ? '#EF4444' : '#94A3B8'};">${riskCount}</div>
-      <div class="rt-summary-lbl">이탈 위험군<br><span style="font-size:9px;">(7일+ 경과, 1-1강 미이수)</span></div>
+      <div class="rt-summary-val" style="color:${riskCount > 0 ? '#EF4444' : '#94A3B8'};font-size:32px;">${riskCount}</div>
+      <div class="rt-summary-lbl" style="font-size:13px;">이탈 위험군<br><span style="font-size:11px;color:#94A3B8;">7일+ 경과 · 1-1강 미이수</span></div>
     </div>
     <div class="rt-summary-card">
-      <div class="rt-summary-val" style="color:#0064B4;">${ch1Rate !== null ? ch1Rate.toFixed(0) + '%' : '–'}</div>
-      <div class="rt-summary-lbl">1챕터 완료율</div>
+      <div class="rt-summary-val" style="color:#0064B4;font-size:32px;">${ch1Rate !== null ? ch1Rate.toFixed(0) + '%' : '–'}</div>
+      <div class="rt-summary-lbl" style="font-size:13px;">1챕터 완료율</div>
     </div>
     <div class="rt-summary-card">
-      <div class="rt-summary-val" style="color:#7C3AED;">${expRate !== null ? expRate.toFixed(0) + '%' : '–'}</div>
-      <div class="rt-summary-lbl">예상 수료율<br><span style="font-size:9px;">(1챕터 패턴 기반)</span></div>
+      <div class="rt-summary-val" style="color:#7C3AED;font-size:32px;">${expRate !== null ? expRate.toFixed(0) + '%' : '–'}</div>
+      <div class="rt-summary-lbl" style="font-size:13px;">전체 예상 수료율<br><span style="font-size:11px;color:#94A3B8;">1챕터 이수 패턴 기반</span></div>
     </div>
   </div>`;
 
@@ -2701,9 +2729,9 @@ function renderRealtime() {
   const ltDeltaBadge = (cohortLt, histLt) => {
     if (cohortLt === null || histLt === null || histLt === 0) return '';
     const ratio = (cohortLt - histLt) / histLt * 100;
-    if (Math.abs(ratio) < 5) return `<span style="font-size:10px;color:#64748B;">≈ 과거 평균</span>`;
+    if (Math.abs(ratio) < 5) return `<span style="font-size:12px;color:#64748B;font-weight:600;">≈ 과거 수준</span>`;
     const faster = ratio < 0;
-    return `<span style="font-size:10px;font-weight:700;color:${faster?'#059669':'#EF4444'};">${faster?'▲빠름':'▽느림'} ${Math.abs(ratio).toFixed(0)}%</span>`;
+    return `<span style="font-size:12px;font-weight:800;color:${faster?'#059669':'#EF4444'};background:${faster?'#ECFDF5':'#FEF2F2'};padding:2px 7px;border-radius:4px;">${faster?'▲':'▽'} ${Math.abs(ratio).toFixed(0)}% ${faster?'빠름':'느림'}</span>`;
   };
 
   // Adjusted prediction rate using lt_11 lead time
@@ -2723,38 +2751,49 @@ function renderRealtime() {
     return { rate: baseRate, usedLt11: false, cohortLt11: null, histLt11: histStats.avgLt11, histCr: histStats.crWithLt11 };
   };
 
-  // Insight text generator
+  // Insight text generator — narrative: "과거 LT X, 수료율 Y% → 현 LT Z → 예상 W%"
   const buildInsight = (students, histStats, pred) => {
     const lines = [];
     const lt11Students = students.filter(r => r.lt_11 !== null);
     const ch1Students  = students.filter(r => r.lt_ch1 !== null);
 
     if (pred.usedLt11 && pred.cohortLt11 !== null && pred.histLt11 !== null) {
-      const histCrStr = pred.histCr !== null ? ` (이수자 과거 수료율 ${pred.histCr.toFixed(0)}%)` : '';
+      const histCrStr = pred.histCr !== null ? `${pred.histCr.toFixed(0)}%` : '–';
       const cohortStr = fmtH(pred.cohortLt11, 0);
       const histStr   = fmtH(pred.histLt11, 0);
       const ratio = (pred.cohortLt11 - pred.histLt11) / pred.histLt11 * 100;
-      const signal = Math.abs(ratio) < 5 ? '과거와 유사' : ratio < 0 ? `과거보다 ${Math.abs(ratio).toFixed(0)}% 빠름 — 수료 유리한 신호` : `과거보다 ${ratio.toFixed(0)}% 느림 — 수료율 소폭 하락 예상`;
-      lines.push(`1-1강 이수 LT: 이 회차 <strong>${cohortStr}</strong> vs 과거 평균 <strong>${histStr}</strong>${histCrStr} → ${signal}`);
+      const signal = Math.abs(ratio) < 5
+        ? '과거와 거의 같은 속도로 진행 중'
+        : ratio < 0
+          ? `과거보다 <strong style="color:#059669;">${Math.abs(ratio).toFixed(0)}% 빠름</strong> — 수료율 상승 기대`
+          : `과거보다 <strong style="color:#EF4444;">${ratio.toFixed(0)}% 느림</strong> — 수료율 소폭 하락 예상`;
+      lines.push(
+        `이 강의의 과거 1-1강 이수 LT 평균은 <strong>${histStr}</strong>이고, 이수자의 수료율은 <strong>${histCrStr}</strong>이었습니다. ` +
+        `현 회차 이수 LT는 <strong>${cohortStr}</strong>으로 ${signal}.`
+      );
+      if (pred.rate !== null) {
+        lines.push(`→ 예상 수료율: <strong style="font-size:14px;color:${pred.rate>=70?'#059669':pred.rate>=50?'#F97316':'#EF4444'};">${pred.rate.toFixed(0)}%</strong>`);
+      }
     } else if (pred.histLt11 !== null) {
-      const lt11Rate = students.length ? lt11Students.length / students.length * 100 : 0;
-      if (lt11Rate === 0) {
-        lines.push(`아직 1-1강 이수자 없음 — 과거 이수자 LT 평균: <strong>${fmtH(pred.histLt11, 0)}</strong>`);
+      if (lt11Students.length === 0) {
+        lines.push(`아직 1-1강 이수자 없음 — 이 강의의 과거 이수 LT 평균: <strong>${fmtH(pred.histLt11, 0)}</strong>${pred.histCr !== null ? `, 이수자 수료율 <strong>${pred.histCr.toFixed(0)}%</strong>` : ''}`);
       } else {
-        lines.push(`1-1강 이수자 ${lt11Students.length}명의 LT 집계 중 (과거 평균 ${fmtH(pred.histLt11, 0)})`);
+        lines.push(`1-1강 이수자 ${lt11Students.length}명 집계 중 — 과거 LT 평균 ${fmtH(pred.histLt11, 0)} 대비 추이 모니터링 필요`);
       }
     }
 
     if (ch1Students.length > 0 && histStats.avgCh1 !== null) {
       const cohortCh1 = avg(ch1Students.map(r => r.lt_ch1));
       const ratio2 = (cohortCh1 - histStats.avgCh1) / histStats.avgCh1 * 100;
-      const signal2 = Math.abs(ratio2) < 5 ? '과거와 유사' : ratio2 < 0 ? `${Math.abs(ratio2).toFixed(0)}% 빠름` : `${ratio2.toFixed(0)}% 느림`;
-      lines.push(`1챕터 완료 LT: 이 회차 <strong>${fmtH(cohortCh1, 0)}</strong> vs 과거 평균 <strong>${fmtH(histStats.avgCh1, 0)}</strong> → ${signal2}`);
+      const signal2 = Math.abs(ratio2) < 5 ? '과거와 유사' : ratio2 < 0
+        ? `<span style="color:#059669;">${Math.abs(ratio2).toFixed(0)}% 빠름</span>`
+        : `<span style="color:#EF4444;">${ratio2.toFixed(0)}% 느림</span>`;
+      lines.push(`1챕터 완료 LT: <strong>${fmtH(cohortCh1, 0)}</strong> (과거 ${fmtH(histStats.avgCh1, 0)}) → ${signal2}`);
     } else if (histStats.avgCh1 !== null && ch1Students.length === 0) {
       lines.push(`1챕터 완료자 아직 없음 — 과거 평균 LT: <strong>${fmtH(histStats.avgCh1, 0)}</strong>`);
     }
 
-    return lines.length ? lines.map(l => `<div style="font-size:11px;color:#475569;line-height:1.7;padding:2px 0;">${l}</div>`).join('') : '';
+    return lines.length ? lines.map(l => `<div style="color:#475569;line-height:1.8;padding:2px 0;">${l}</div>`).join('') : '';
   };
 
   const courseCards = Object.keys(courseGroups).sort(sortByCourse).map(course => {
@@ -2797,59 +2836,64 @@ function renderRealtime() {
       const insightHtml = buildInsight(students, histStats, pred);
       const expColor = expRateC !== null ? (expRateC >= 70 ? '#059669' : expRateC >= 50 ? '#F97316' : '#EF4444') : '#94A3B8';
 
-      return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#FAFCFF;">
-        <!-- Row 1: header -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:12px;font-weight:700;color:#003566;background:#EEF2FF;border-radius:4px;padding:2px 9px;">${label}</span>
-            ${daysSince !== null ? `<span style="font-size:11px;color:#94A3B8;">${daysSince}일 경과</span>` : ''}
-            <span style="font-size:12px;font-weight:700;color:#475569;">${n}명</span>
-            ${riskN2 > 0 ? `<span class="rt-risk-badge">⚠ 위험 ${riskN2}명</span>` : ''}
+      // Ch1 not-yet-done warning
+      const ch1Missing = n - ch1N;
+      const ch1MissingHtml = ch1Missing > 0
+        ? `<div style="margin-top:10px;padding:8px 12px;background:#FFF7ED;border-left:3px solid #F97316;border-radius:0 6px 6px 0;font-size:13px;color:#92400E;">
+            <strong>1챕터 미완료 ${ch1Missing}명 (${Math.round(ch1Missing/n*100)}%)</strong> — ${
+              histStats.avgCh1 !== null
+                ? `과거 1챕터 완료 LT 평균 ${fmtH(histStats.avgCh1,0)} 기준, 아직 완료 전인 수강생이 ${Math.round(ch1Missing/n*100)}% 남아 있음`
+                : '아직 1챕터를 완료하지 않은 수강생 주의 필요'
+            }
+           </div>`
+        : '';
+
+      return `<div style="border:1px solid #E2E8F0;border-radius:12px;padding:18px 22px;margin-bottom:14px;background:#FAFCFF;">
+        <!-- Header: 회차 · 수강생 · 예상 수료율 -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+              <span style="font-size:15px;font-weight:800;color:#003566;background:#EEF2FF;border-radius:5px;padding:3px 11px;">${label}</span>
+              ${riskN2 > 0 ? `<span class="rt-risk-badge" style="font-size:12px;">⚠ 위험 ${riskN2}명</span>` : ''}
+            </div>
+            <div style="font-size:14px;color:#475569;font-weight:600;">
+              ${n}명 수강 중${daysSince !== null ? ` · <span style="color:#94A3B8;">${daysSince}일 경과</span>` : ''}${phaseLabel ? ` · <span style="color:#64748B;">${phaseLabel}</span>` : ''}
+            </div>
           </div>
-          <!-- BIG predicted rate -->
-          ${expRateC !== null ? `<div style="text-align:right;">
-            <div style="font-size:10px;color:#94A3B8;font-weight:600;letter-spacing:0.3px;margin-bottom:1px;">예상 수료율</div>
-            <div style="font-size:28px;font-weight:900;color:${expColor};line-height:1;">${expRateC.toFixed(0)}<span style="font-size:15px;">%</span></div>
+          ${expRateC !== null ? `<div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:11px;color:#94A3B8;font-weight:600;letter-spacing:0.3px;margin-bottom:3px;">예상 수료율</div>
+            <div style="font-size:38px;font-weight:900;color:${expColor};line-height:1;">${expRateC.toFixed(0)}<span style="font-size:20px;font-weight:600;">%</span></div>
           </div>` : ''}
         </div>
-        <!-- Row 2: phase bar + phase label -->
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          ${phaseBar}
-          ${phaseLabel ? `<span style="font-size:10px;color:#64748B;white-space:nowrap;">${phaseLabel}</span>` : ''}
+        <!-- LT 비교 테이블 -->
+        <div style="display:grid;grid-template-columns:130px 1fr 1fr 90px;gap:6px 16px;align-items:center;background:#F1F5F9;border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+          <div style="font-size:11px;color:#94A3B8;font-weight:700;">리드타임 지표</div>
+          <div style="font-size:11px;color:#94A3B8;font-weight:700;">이 회차 평균</div>
+          <div style="font-size:11px;color:#94A3B8;font-weight:700;">과거 평균</div>
+          <div style="font-size:11px;color:#94A3B8;font-weight:700;">비교</div>
+
+          <div style="font-size:13px;color:#1E293B;font-weight:600;padding:3px 0;">1-1강 이수 LT</div>
+          <div style="font-size:17px;font-weight:800;color:#003566;">${cAvgLt11 !== null ? fmtH(cAvgLt11,0) : '<span style="color:#94A3B8;">데이터 없음</span>'}</div>
+          <div style="font-size:14px;color:#64748B;">${histStats.avgLt11 !== null ? fmtH(histStats.avgLt11,0) : '–'}</div>
+          <div>${ltDeltaBadge(cAvgLt11, histStats.avgLt11)}</div>
+
+          <div style="font-size:13px;color:#1E293B;font-weight:600;padding:3px 0;">1챕터 완료 LT</div>
+          <div style="font-size:17px;font-weight:800;color:#0064B4;">${cAvgCh1 !== null ? fmtH(cAvgCh1,0) : '<span style="color:#94A3B8;">데이터 없음</span>'}</div>
+          <div style="font-size:14px;color:#64748B;">${histStats.avgCh1 !== null ? fmtH(histStats.avgCh1,0) : '–'}</div>
+          <div>${ltDeltaBadge(cAvgCh1, histStats.avgCh1)}</div>
         </div>
-        <!-- Row 3: Lead time metrics -->
-        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">1-1강 이수</span>
-            ${miniBar(lt11N / n * 100, '#003566')}
-            <span style="font-size:11px;font-weight:700;color:#003566;white-space:nowrap;width:32px;">${lt11N}/${n}</span>
-            <span style="font-size:11px;color:#1E293B;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgLt11 !== null ? fmtH(cAvgLt11,0) : '–'}</span>
-            ${ltDeltaBadge(cAvgLt11, histStats.avgLt11)}
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">1챕터 완료</span>
-            ${miniBar(ch1N / n * 100, '#0064B4')}
-            <span style="font-size:11px;font-weight:700;color:#0064B4;white-space:nowrap;width:32px;">${ch1N}/${n}</span>
-            <span style="font-size:11px;color:#1E293B;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgCh1 !== null ? fmtH(cAvgCh1,0) : '–'}</span>
-            ${ltDeltaBadge(cAvgCh1, histStats.avgCh1)}
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:10px;color:#94A3B8;width:64px;flex-shrink:0;">진도율</span>
-            ${miniBar(cAvgProg, '#94A3B8')}
-            <span style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;width:32px;"> </span>
-            <span style="font-size:11px;color:#475569;font-weight:700;white-space:nowrap;min-width:52px;">${cAvgProg !== null ? cAvgProg.toFixed(0)+'%' : '–'}</span>
-          </div>
-        </div>
-        <!-- Row 4: Insight text -->
-        ${insightHtml ? `<div style="background:#F8FAFC;border-left:3px solid #CBD5E1;border-radius:0 6px 6px 0;padding:8px 12px;">${insightHtml}</div>` : ''}
+        <!-- 예측 근거 narrative -->
+        ${insightHtml ? `<div style="background:#F8FAFC;border-left:3px solid #CBD5E1;border-radius:0 6px 6px 0;padding:10px 14px;font-size:13px;line-height:1.8;">${insightHtml}</div>` : ''}
+        <!-- Ch1 미완료 경고 -->
+        ${ch1MissingHtml}
       </div>`;
     }).join('');
 
     // Course-level historical summary
-    const histSummary = histStats.total > 0 ? `<div style="font-size:10px;color:#94A3B8;margin-bottom:10px;">
-      과거 수강 종료 ${histStats.total}명 기준 —
-      ${histStats.avgLt11 !== null ? `1-1강 이수 LT 평균: <strong style="color:#475569;">${fmtH(histStats.avgLt11,0)}</strong> (이수자 수료율 ${histStats.crWithLt11?.toFixed(0)??'–'}%)` : ''}
-      ${histStats.avgCh1  !== null ? ` · 1챕터 완료 LT 평균: <strong style="color:#475569;">${fmtH(histStats.avgCh1,0)}</strong>` : ''}
+    const histSummary = histStats.total > 0 ? `<div style="font-size:12px;color:#94A3B8;margin-bottom:12px;padding:8px 12px;background:#F8FAFC;border-radius:6px;line-height:1.8;">
+      <strong style="color:#64748B;">과거 벤치마크</strong> (수강 종료 ${histStats.total}명 기준) ·
+      ${histStats.avgLt11 !== null ? `1-1강 이수 LT: <strong style="color:#475569;">${fmtH(histStats.avgLt11,0)}</strong> · 이수자 수료율 <strong style="color:#FA0030;">${histStats.crWithLt11?.toFixed(0)??'–'}%</strong>` : ''}
+      ${histStats.avgCh1  !== null ? ` · 1챕터 완료 LT: <strong style="color:#475569;">${fmtH(histStats.avgCh1,0)}</strong>` : ''}
     </div>` : '';
 
     return `<div class="rt-course-card">
