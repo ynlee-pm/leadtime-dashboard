@@ -359,6 +359,16 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
 .btn-ai-insight { background: #003566; color: white; border: none; border-radius: 6px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; font-family: inherit; white-space: nowrap; }
 .btn-ai-insight:hover { background: #0057A8; }
 .btn-ai-insight:disabled { background: #94A3B8; cursor: not-allowed; }
+
+/* ── NPS Tab ── */
+.nps-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px; }
+.nps-badge.good { background:#D1FAE5; color:#065F46; }
+.nps-badge.ok   { background:#FEF3C7; color:#92400E; }
+.nps-badge.bad  { background:#FEE2E2; color:#991B1B; }
+.nps-table { width:100%; border-collapse:collapse; font-size:12px; }
+.nps-table th { background:#F8FAFC; padding:8px 10px; text-align:left; font-weight:700; border-bottom:2px solid #E2E8F0; white-space:nowrap; }
+.nps-table td { padding:7px 10px; border-bottom:1px solid #E2E8F0; }
+.nps-table tr:hover td { background:#F8FAFC; }
 </style>
 </head>
 <body>
@@ -378,6 +388,7 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
       </div>
       <div class="tab-nav">
         <button class="tab-btn active" id="tab-main" onclick="switchTab('main')">대시보드</button>
+        <button class="tab-btn" id="tab-nps" onclick="switchTab('nps')">NPS</button>
         <button class="tab-btn" id="tab-deploy" onclick="switchTab('deploy')">배포 분석</button>
         <button class="tab-btn" id="tab-realtime" onclick="switchTab('realtime')">실시간 ●</button>
       </div>
@@ -679,6 +690,131 @@ details[open] .deploy-manage-toggle::after { transform: rotate(180deg); }
         </div>
       </div><!-- /tab-pane-realtime -->
 
+      <!-- ═══ NPS 탭 ═══ -->
+      <div id="tab-pane-nps" class="tab-pane">
+        <div class="page-inner" style="padding-top:20px; padding-bottom:40px;">
+
+          <!-- NPS 필터바 -->
+          <div class="section-card" style="margin-bottom:16px;overflow:visible;">
+            <div style="display:flex;flex-wrap:nowrap;align-items:center;gap:10px;padding:11px 20px;">
+              <span class="filter-label" style="font-size:12px;color:#64748B;font-weight:700;white-space:nowrap;">상품</span>
+              <div class="ms-wrap" id="nps-product-wrap">
+                <div class="ms-trigger" id="nps-product-trigger" onclick="npsToggleDropdown('nps-product')">
+                  <span id="nps-product-label" class="ms-label">전체 상품</span>
+                  <span class="ms-arrow">▼</span>
+                </div>
+                <div class="ms-panel" id="nps-product-panel"></div>
+              </div>
+
+              <span class="filter-label" style="font-size:12px;color:#64748B;font-weight:700;white-space:nowrap;">연령대</span>
+              <div class="ms-wrap" id="nps-age-wrap">
+                <div class="ms-trigger" id="nps-age-trigger" onclick="npsToggleDropdown('nps-age')" style="min-width:120px;max-width:160px;">
+                  <span id="nps-age-label" class="ms-label">전체 연령</span>
+                  <span class="ms-arrow">▼</span>
+                </div>
+                <div class="ms-panel" id="nps-age-panel"></div>
+              </div>
+
+              <span class="filter-label" style="font-size:12px;color:#64748B;font-weight:700;white-space:nowrap;">기간</span>
+              <input type="date" id="nps-date-from" class="date-input" onchange="npsApplyFilters()" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;">
+              <span style="color:#94A3B8;">~</span>
+              <input type="date" id="nps-date-to" class="date-input" onchange="npsApplyFilters()" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;">
+              <button onclick="npsResetFilters()" style="padding:6px 14px;font-size:12px;background:#E2E8F0;color:#475569;border:none;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">초기화</button>
+              <button onclick="npsForceRefresh()" style="padding:6px 12px;font-size:12px;background:transparent;color:#94A3B8;border:1px solid #CBD5E1;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">🔄</button>
+            </div>
+          </div>
+
+          <!-- NPS 로딩 상태 -->
+          <div id="nps-loading" style="display:none;text-align:center;padding:48px;color:#94A3B8;font-size:13px;">
+            <div style="display:inline-block;width:24px;height:24px;border:3px solid #E2E8F0;border-top-color:#FA0030;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px;"></div>
+            <div>NPS 데이터를 불러오는 중...</div>
+          </div>
+          <div id="nps-error" style="display:none;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px 20px;color:#991B1B;font-size:13px;margin-bottom:16px;"></div>
+
+          <!-- NPS KPI 카드 -->
+          <div id="nps-kpi-row" style="display:none;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;">
+            <div class="section-card" style="padding:18px 22px;">
+              <div style="font-size:11px;color:#94A3B8;font-weight:700;margin-bottom:6px;">총 응답 수</div>
+              <div id="nps-kpi-total" style="font-size:28px;font-weight:800;color:#1E293B;">—</div>
+              <div id="nps-kpi-total-sub" style="font-size:11px;color:#94A3B8;margin-top:4px;"></div>
+            </div>
+            <div class="section-card" style="padding:18px 22px;">
+              <div style="font-size:11px;color:#94A3B8;font-weight:700;margin-bottom:6px;">NPS 점수</div>
+              <div id="nps-kpi-score" style="font-size:28px;font-weight:800;">—</div>
+              <div id="nps-kpi-score-sub" style="font-size:11px;color:#94A3B8;margin-top:4px;"></div>
+            </div>
+            <div class="section-card" style="padding:18px 22px;">
+              <div style="font-size:11px;color:#94A3B8;font-weight:700;margin-bottom:6px;">평균 만족도</div>
+              <div id="nps-kpi-sat" style="font-size:28px;font-weight:800;color:#3B82F6;">—</div>
+              <div style="font-size:11px;color:#94A3B8;margin-top:4px;">/ 5.0</div>
+            </div>
+            <div class="section-card" style="padding:18px 22px;">
+              <div style="font-size:11px;color:#94A3B8;font-weight:700;margin-bottom:6px;">추천 비율 (Promoter)</div>
+              <div id="nps-kpi-promoter" style="font-size:28px;font-weight:800;color:#10B981;">—</div>
+              <div id="nps-kpi-promoter-sub" style="font-size:11px;color:#94A3B8;margin-top:4px;"></div>
+            </div>
+          </div>
+
+          <!-- NPS 서브탭 -->
+          <div id="nps-subtabs" style="display:none;">
+            <div style="display:flex;gap:0;border-bottom:2px solid #E2E8F0;margin-bottom:20px;background:white;border-radius:10px 10px 0 0;overflow:hidden;">
+              <button class="nps-sub-btn active" onclick="switchNpsSubTab('product')" id="nps-sub-product" style="padding:11px 22px;font-size:13px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94A3B8;transition:all .15s;">상품별</button>
+              <button class="nps-sub-btn" onclick="switchNpsSubTab('period')" id="nps-sub-period" style="padding:11px 22px;font-size:13px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94A3B8;transition:all .15s;">기간별</button>
+              <button class="nps-sub-btn" onclick="switchNpsSubTab('age')" id="nps-sub-age" style="padding:11px 22px;font-size:13px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94A3B8;transition:all .15s;">연령대별</button>
+              <button class="nps-sub-btn" onclick="switchNpsSubTab('factors')" id="nps-sub-factors" style="padding:11px 22px;font-size:13px;font-weight:700;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94A3B8;transition:all .15s;">도움 요소</button>
+            </div>
+
+            <!-- 상품별 -->
+            <div id="nps-panel-product" class="nps-panel">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">상품별 NPS 점수</div><canvas id="nps-chart-product-nps"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">상품별 평균 만족도</div><canvas id="nps-chart-product-sat"></canvas></div>
+              </div>
+              <div class="section-card" style="padding:20px;margin-bottom:16px;grid-column:1/-1;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">상품별 NPS 분포 (Promoter / Passive / Detractor)</div><canvas id="nps-chart-product-dist"></canvas></div>
+              <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">상품별 상세</div><div style="overflow-x:auto;" id="nps-product-table"></div></div>
+            </div>
+
+            <!-- 기간별 -->
+            <div id="nps-panel-period" class="nps-panel" style="display:none;">
+              <div style="display:flex;gap:6px;margin-bottom:16px;">
+                <button class="active" id="nps-period-week" onclick="setNpsPeriod('week',this)" style="padding:6px 16px;border:1px solid #CBD5E1;border-radius:6px;background:#FA0030;color:white;font-size:12px;cursor:pointer;font-weight:700;">주간</button>
+                <button id="nps-period-month" onclick="setNpsPeriod('month',this)" style="padding:6px 16px;border:1px solid #CBD5E1;border-radius:6px;background:white;color:#475569;font-size:12px;cursor:pointer;font-weight:700;">월간</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">NPS 추이</div><canvas id="nps-chart-period-nps"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">평균 만족도 추이</div><canvas id="nps-chart-period-sat"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">응답 수 추이</div><canvas id="nps-chart-period-count"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">NPS 분포 추이</div><canvas id="nps-chart-period-dist"></canvas></div>
+              </div>
+            </div>
+
+            <!-- 연령대별 -->
+            <div id="nps-panel-age" class="nps-panel" style="display:none;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">연령대별 NPS 점수</div><canvas id="nps-chart-age-nps"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">연령대별 평균 만족도</div><canvas id="nps-chart-age-sat"></canvas></div>
+              </div>
+              <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">연령대별 NPS 분포</div><canvas id="nps-chart-age-dist"></canvas></div>
+            </div>
+
+            <!-- 도움 요소 -->
+            <div id="nps-panel-factors" class="nps-panel" style="display:none;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">도움 요소 선택 빈도</div><canvas id="nps-chart-factors-freq"></canvas></div>
+                <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">도움 요소별 평균 NPS</div><canvas id="nps-chart-factors-nps"></canvas></div>
+              </div>
+              <div class="section-card" style="padding:20px;"><div class="section-title" style="margin-bottom:12px;font-size:13px;">상품별 주요 도움 요소 (Top 3)</div><div style="overflow-x:auto;" id="nps-factors-table"></div></div>
+            </div>
+          </div><!-- /nps-subtabs -->
+
+          <!-- 초기 안내 -->
+          <div id="nps-empty" style="text-align:center;color:#94A3B8;padding:64px;font-size:13px;">
+            탭을 클릭하면 NPS 데이터를 불러옵니다.
+          </div>
+
+        </div>
+      </div><!-- /tab-pane-nps -->
+
     </div>
   </div>
 </div>
@@ -719,6 +855,8 @@ const DEFAULT_WORKER_URL = 'https://leadtime-dashboard.yn-lee.workers.dev';
 const SHEET_ID       = '101oIzi_iNX4cSMrfq-va4T2mJRWxroyYweCgJDbhU2k';
 const SHEET_GID      = '1599933316';
 const PRICE_SHEET_GID = '1901537410';
+const NPS_SHEET_ID    = '1TSzEww0CNCv_Jf3Ic0vmn3ihEFSJVtTguxc9y8oG8cg';
+const NPS_SHEET_GID   = '1689434950';
 const NOTES_KEY = 'sc_leadtime_notes_v2';
 
 const GVIZ_URL       = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${SHEET_GID}`;
@@ -745,10 +883,21 @@ let rtSeniorFilter = 'all';
 let deployDetailId   = null;
 let cmpSeniorFilter  = 'all';
 
+// NPS state
+let npsRawData       = null;   // parsed rows, null = 미로드
+let npsFiltered      = [];
+let npsCharts        = {};
+let npsCurrentPeriod = 'week';
+let npsSelectedProds = new Set();  // empty = 전체
+let npsSelectedAges  = new Set();  // empty = 전체
+let npsProductList   = [];
+let npsAgeList       = [];
+let npsProductMap    = {};  // product name → productId
+
 const filters = { senior: 'all', period: 'month', metric: 'lt_11', completion: 'all' };
 
 function switchTab(name) {
-  ['main','deploy','realtime'].forEach(t => {
+  ['main','deploy','realtime','nps'].forEach(t => {
     document.getElementById('tab-'+t)?.classList.toggle('active', name === t);
     document.getElementById('tab-pane-'+t)?.classList.toggle('active', name === t);
   });
@@ -756,6 +905,7 @@ function switchTab(name) {
   if (fb) fb.style.display = name === 'main' ? '' : 'none';
   if (name === 'deploy') renderDeployAnalysis();
   if (name === 'realtime') renderRealtime();
+  if (name === 'nps') renderNpsTab();
 }
 
 function sortByCourse(a, b) {
@@ -774,7 +924,10 @@ function parseCSV(text) {
     const cols = []; let inQ = false, cur = '';
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
-      if (c === '"') { inQ = !inQ; }
+      if (c === '"') {
+          if (inQ && line[i+1] === '"') { cur += '"'; i++; }  // "" → escaped quote
+          else { inQ = !inQ; }
+        }
       else if (c === ',' && !inQ) { cols.push(cur); cur = ''; }
       else { cur += c; }
     }
@@ -2918,6 +3071,528 @@ function renderRealtime() {
   }
 
   body.innerHTML = summaryHtml + (courseCards || '<div style="color:#94A3B8;text-align:center;padding:24px;">강의별 데이터 없음</div>');
+}
+
+document.addEventListener('click', e => {
+  ['nps-product','nps-age'].forEach(k => {
+    const wrap = document.getElementById(k+'-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      document.getElementById(k+'-panel')?.classList.remove('open');
+      document.getElementById(k+'-trigger')?.classList.remove('open');
+    }
+  });
+});
+
+// ════════════════════════════════════
+// NPS Tab
+// ════════════════════════════════════
+
+const NPS_FACTOR_LABELS = {
+  study_material: '학습 자료', summary_note: '요약 노트', ai_chatbot: 'AI 챗봇',
+  feature_guide: '기능 가이드', code_snippet: '코드 스니펫', basic_practice: '기초 실습',
+  puzzle: '퍼즐/퀴즈', custom_helpful: '기타'
+};
+const NPS_COLORS = {
+  promoter: '#10B981', passive: '#F59E0B', detractor: '#EF4444',
+  primary: '#4F46E5', primaryLight: '#818CF8',
+  palette: ['#4F46E5','#06B6D4','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#14B8A6']
+};
+
+function npsParseRow(r) {
+  const age = parseInt(r['연령통합']);
+  let factors = [];
+  try { factors = JSON.parse(r['helpful_factors_options_json'] || '[]'); } catch(e) {}
+  return {
+    product: (r['상품명'] || '').trim(),
+    productId: r['product_id'],
+    age: isNaN(age) ? null : age,
+    ageGroup: isNaN(age) ? '기타' : age >= 40 ? '시니어 (40+)' : '비시니어 (30대 이하)',
+    submittedAt: parseDate(r['submitted_at']),
+    npsScore: parseInt(r['nps_score']),
+    npsBucket: r['nps_bucket'],
+    npsReason: r['nps_reason'] || '',
+    satisfaction: parseInt(r['learning_env_satisfaction']),
+    factors,
+    factorsCustom: r['helpful_factors_custom'] || ''
+  };
+}
+
+function npsShowLoading(on) {
+  const ld = document.getElementById('nps-loading');
+  const em = document.getElementById('nps-empty');
+  if (ld) ld.style.display = on ? 'block' : 'none';
+  if (em) em.style.display = on ? 'none' : '';
+}
+function npsShowError(msg) {
+  const el = document.getElementById('nps-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+function npsShowContent(on) {
+  const kpi = document.getElementById('nps-kpi-row');
+  const sub = document.getElementById('nps-subtabs');
+  const em  = document.getElementById('nps-empty');
+  if (kpi) kpi.style.display = on ? 'grid' : 'none';
+  if (sub) sub.style.display = on ? 'block' : 'none';
+  if (em)  em.style.display  = on ? 'none'  : 'block';
+}
+
+async function npsLoadData() {
+  npsShowLoading(true);
+  npsShowError('');
+  npsShowContent(false);
+
+  let text = null;
+
+  // 1) GAS URL + tab=nps
+  if (DEFAULT_GAS_URL) {
+    const url = DEFAULT_GAS_URL + (DEFAULT_GAS_URL.includes('?') ? '&' : '?') + 'tab=nps';
+    text = await fetchText(url, 12000);
+  }
+  // 2) GViz URL with NPS_SHEET_GID (직접 fetch — fetchText의 필터 우회)
+  if (!text && NPS_SHEET_GID) {
+    const gviz = `https://docs.google.com/spreadsheets/d/${NPS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${NPS_SHEET_GID}`;
+    try {
+      const res = await fetch(gviz);
+      if (res.ok) {
+        const t = await res.text();
+        if (t && t.trim() && !t.trim().startsWith('<')) text = t;
+      }
+    } catch(e) {}
+  }
+
+  npsShowLoading(false);
+
+  if (!text) {
+    npsShowError('❌ NPS 데이터를 불러오지 못했습니다. NPS_SHEET_GID 또는 GAS URL(tab=nps)을 확인해 주세요.');
+    return false;
+  }
+
+  const rows = parseCSV(text);
+  const headers = rows[0].map(h => h.trim());
+  const parsed = rows.slice(1).filter(r => r.length > 1).map(cols => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (cols[i] || '').trim(); });
+    return npsParseRow(obj);
+  }).filter(r => r.product && !isNaN(r.npsScore));
+
+  if (!parsed.length) {
+    npsShowError('❌ NPS 데이터 파싱 실패 (0행). 컬럼명을 확인해 주세요.');
+    return false;
+  }
+
+  npsRawData = parsed;
+  npsProductMap = {};
+  parsed.forEach(r => { if (r.product && r.productId) npsProductMap[r.product] = r.productId; });
+  npsProductList = [...new Set(parsed.map(r => r.product))].sort((a, b) => {
+    const pa = npsProductMap[a] || '', pb = npsProductMap[b] || '';
+    const na = parseFloat(pa), nb = parseFloat(pb);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return pa.localeCompare(pb) || a.localeCompare(b);
+  });
+  npsAgeList = [...new Set(parsed.map(r => r.ageGroup))].sort((a,b)=>{
+    const na=parseInt(a), nb=parseInt(b);
+    if(isNaN(na)) return 1; if(isNaN(nb)) return -1; return na-nb;
+  });
+  return true;
+}
+
+function npsCalcNPS(data) {
+  if (!data.length) return 0;
+  const p = data.filter(d => d.npsBucket === 'Promoter').length;
+  const d = data.filter(d => d.npsBucket === 'Detractor').length;
+  return Math.round(((p - d) / data.length) * 100);
+}
+function npsCalcAvg(data, key) {
+  const vals = data.map(d => d[key]).filter(v => !isNaN(v));
+  return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+}
+function npsGroupBy(data, fn) {
+  const m = {};
+  data.forEach(d => { const k=fn(d); (m[k]=m[k]||[]).push(d); });
+  return m;
+}
+function npsTrunc(s, n) { return s.length > n ? s.slice(0,n)+'…' : s; }
+function npsBadgeHtml(nps) {
+  const cls = nps >= 30 ? 'good' : nps >= 0 ? 'ok' : 'bad';
+  return `<span class="nps-badge ${cls}">${nps}</span>`;
+}
+function npsDestroyChart(key) {
+  if (npsCharts[key]) { npsCharts[key].destroy(); delete npsCharts[key]; }
+}
+
+function npsApplyFilters() {
+  if (!npsRawData) return;
+  let data = npsRawData;
+  const fromVal = document.getElementById('nps-date-from')?.value;
+  const toVal   = document.getElementById('nps-date-to')?.value;
+  const from = fromVal ? new Date(fromVal) : null;
+  const to   = toVal   ? new Date(toVal + 'T23:59:59') : null;
+  data = data.filter(d => {
+    if (npsSelectedProds.size && !npsSelectedProds.has(d.product)) return false;
+    if (npsSelectedAges.size  && !npsSelectedAges.has(d.ageGroup)) return false;
+    if (from && d.submittedAt && d.submittedAt < from) return false;
+    if (to   && d.submittedAt && d.submittedAt > to)   return false;
+    return true;
+  });
+  npsFiltered = data;
+  npsShowContent(true);
+  npsRenderAll();
+}
+
+function npsResetFilters() {
+  npsSelectedProds.clear();
+  npsSelectedAges.clear();
+  if (npsRawData) {
+    const dates = npsRawData.map(d=>d.submittedAt).filter(Boolean);
+    if (dates.length) {
+      document.getElementById('nps-date-from').value = fmtDateISO(new Date(Math.min(...dates)));
+      document.getElementById('nps-date-to').value   = fmtDateISO(new Date(Math.max(...dates)));
+    }
+  }
+  npsUpdateDropdownLabels();
+  npsBuildDropdowns();
+  npsApplyFilters();
+}
+
+function npsUpdateDropdownLabels() {
+  const prodEl = document.getElementById('nps-product-label');
+  if (prodEl) prodEl.textContent = npsSelectedProds.size ? `${npsSelectedProds.size}개 선택` : '전체 상품';
+  const ageEl = document.getElementById('nps-age-label');
+  if (ageEl) ageEl.textContent = npsSelectedAges.size ? `${npsSelectedAges.size}개 선택` : '전체 연령';
+}
+
+// called from HTML: npsToggleDropdown('nps-product') or npsToggleDropdown('nps-age')
+function npsToggleDropdown(id) {
+  const panel   = document.getElementById(id + '-panel');
+  const trigger = document.getElementById(id + '-trigger');
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  ['nps-product','nps-age'].forEach(k => {
+    document.getElementById(k+'-panel')?.classList.remove('open');
+    document.getElementById(k+'-trigger')?.classList.remove('open');
+  });
+  if (!isOpen) {
+    panel.classList.add('open');
+    trigger?.classList.add('open');
+  }
+}
+
+function npsBuildDropdowns() {
+  const prodPanel = document.getElementById('nps-product-panel');
+  if (prodPanel) {
+    prodPanel.innerHTML = npsProductList.map(p => {
+      const pid = npsProductMap[p] || '';
+      const safe = p.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return `<label class="ms-option" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 14px;">
+        <input type="checkbox" class="cb-nps-prod" data-val="${p.replace(/"/g,'&quot;')}"
+          ${npsSelectedProds.has(p)?'checked':''} onchange="npsToggleProdCb(this)"
+          style="accent-color:#FA0030;width:14px;height:14px;cursor:pointer;flex-shrink:0;">
+        ${pid?`<span class="ms-product-id">${pid}</span>`:''}
+        <span>${npsTrunc(p,32)}</span>
+      </label>`;
+    }).join('');
+  }
+  const agePanel = document.getElementById('nps-age-panel');
+  if (agePanel) {
+    agePanel.innerHTML = npsAgeList.map(a =>
+      `<label class="ms-option" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 14px;">
+        <input type="checkbox" class="cb-nps-age" data-val="${a}"
+          ${npsSelectedAges.has(a)?'checked':''} onchange="npsToggleAgeCb(this)"
+          style="accent-color:#FA0030;width:14px;height:14px;cursor:pointer;flex-shrink:0;">
+        <span>${a}</span>
+      </label>`
+    ).join('');
+  }
+}
+
+function npsToggleProdCb(cb) {
+  const val = cb.dataset.val;
+  if (cb.checked) npsSelectedProds.add(val); else npsSelectedProds.delete(val);
+  npsUpdateDropdownLabels();
+  npsApplyFilters();
+}
+function npsToggleAgeCb(cb) {
+  const val = cb.dataset.val;
+  if (cb.checked) npsSelectedAges.add(val); else npsSelectedAges.delete(val);
+  npsUpdateDropdownLabels();
+  npsApplyFilters();
+}
+
+// called from HTML: setNpsPeriod('week', this)
+function setNpsPeriod(p, btn) {
+  npsCurrentPeriod = p;
+  ['nps-period-week','nps-period-month'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    const active = b.id === 'nps-period-'+p;
+    b.style.background = active ? '#FA0030' : 'white';
+    b.style.color = active ? 'white' : '#475569';
+  });
+  npsRenderPeriodTab();
+}
+
+// called from HTML: switchNpsSubTab('product')
+function switchNpsSubTab(id) {
+  document.querySelectorAll('.nps-sub-btn').forEach(b => {
+    const tabId = b.getAttribute('onclick')?.match(/'(\w+)'/)?.[1];
+    const isActive = tabId === id;
+    b.style.color = isActive ? '#FA0030' : '#94A3B8';
+    b.style.borderBottomColor = isActive ? '#FA0030' : 'transparent';
+  });
+  document.querySelectorAll('.nps-panel').forEach(p => {
+    p.style.display = (p.id === 'nps-panel-'+id) ? 'block' : 'none';
+  });
+  if (id === 'period') npsRenderPeriodTab();
+  else if (id === 'age') npsRenderAgeTab();
+  else if (id === 'factors') npsRenderFactorsTab();
+}
+
+function npsRenderKPIs() {
+  const data = npsFiltered;
+  const n = data.length;
+  const nps = npsCalcNPS(data);
+  const sat = npsCalcAvg(data, 'satisfaction');
+  const prom = data.filter(d=>d.npsBucket==='Promoter').length;
+  const pass = data.filter(d=>d.npsBucket==='Passive').length;
+  const det  = data.filter(d=>d.npsBucket==='Detractor').length;
+
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('nps-kpi-total', n.toLocaleString());
+  set('nps-kpi-total-sub', `전체 ${(npsRawData||[]).length}건 중`);
+  const npsEl = document.getElementById('nps-kpi-score');
+  if (npsEl) {
+    npsEl.textContent = nps;
+    npsEl.style.color = nps >= 30 ? '#10B981' : nps >= 0 ? '#F59E0B' : '#EF4444';
+  }
+  set('nps-kpi-score-sub', `P:${prom} / N:${pass} / D:${det}`);
+  set('nps-kpi-sat', sat.toFixed(1));
+  const pct = n ? Math.round(prom/n*100) : 0;
+  set('nps-kpi-promoter', pct+'%');
+  set('nps-kpi-promoter-sub', `${prom}명 / ${n}명`);
+}
+
+function npsRenderProductTab() {
+  const byProd = npsGroupBy(npsFiltered, d => d.product);
+  const entries = Object.entries(byProd)
+    .map(([name,rows]) => ({name,rows,nps:npsCalcNPS(rows),sat:npsCalcAvg(rows,'satisfaction'),count:rows.length}))
+    .sort((a,b)=>b.count-a.count);
+  const labels = entries.map(e=>npsTrunc(e.name,20));
+
+  npsDestroyChart('pNps');
+  npsCharts.pNps = new Chart(document.getElementById('nps-chart-product-nps'), {
+    type:'bar', data:{labels, datasets:[{label:'NPS', data:entries.map(e=>e.nps),
+      backgroundColor:entries.map(e=>e.nps>=30?NPS_COLORS.promoter:e.nps>=0?NPS_COLORS.passive:NPS_COLORS.detractor), borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:-100,max:100}}}
+  });
+
+  npsDestroyChart('pSat');
+  npsCharts.pSat = new Chart(document.getElementById('nps-chart-product-sat'), {
+    type:'bar', data:{labels, datasets:[{label:'만족도', data:entries.map(e=>+e.sat.toFixed(1)),
+      backgroundColor:NPS_COLORS.primary, borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:0,max:5}}}
+  });
+
+  npsDestroyChart('pDist');
+  npsCharts.pDist = new Chart(document.getElementById('nps-chart-product-dist'), {
+    type:'bar', data:{labels, datasets:[
+      {label:'Promoter', data:entries.map(e=>Math.round(e.rows.filter(r=>r.npsBucket==='Promoter').length/e.count*100)), backgroundColor:NPS_COLORS.promoter},
+      {label:'Passive',  data:entries.map(e=>Math.round(e.rows.filter(r=>r.npsBucket==='Passive').length/e.count*100)),  backgroundColor:NPS_COLORS.passive},
+      {label:'Detractor',data:entries.map(e=>Math.round(e.rows.filter(r=>r.npsBucket==='Detractor').length/e.count*100)),backgroundColor:NPS_COLORS.detractor}
+    ]},
+    options:{indexAxis:'y', responsive:true, aspectRatio:4,
+      scales:{x:{stacked:true,max:100,ticks:{callback:v=>v+'%'}},y:{stacked:true}},
+      plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}}}}
+  });
+
+  let html = '<table class="nps-table"><thead><tr><th>상품명</th><th>응답수</th><th>NPS</th><th>만족도</th><th>Promoter</th><th>Passive</th><th>Detractor</th></tr></thead><tbody>';
+  entries.forEach(e => {
+    const p=e.rows.filter(r=>r.npsBucket==='Promoter').length;
+    const pa=e.rows.filter(r=>r.npsBucket==='Passive').length;
+    const d=e.rows.filter(r=>r.npsBucket==='Detractor').length;
+    html += `<tr><td title="${e.name}">${npsTrunc(e.name,35)}</td><td>${e.count}</td><td>${npsBadgeHtml(e.nps)}</td><td>${e.sat.toFixed(1)}</td><td>${p} (${Math.round(p/e.count*100)}%)</td><td>${pa} (${Math.round(pa/e.count*100)}%)</td><td>${d} (${Math.round(d/e.count*100)}%)</td></tr>`;
+  });
+  html += '</tbody></table>';
+  const wrap = document.getElementById('nps-product-table');
+  if (wrap) wrap.innerHTML = html;
+}
+
+function npsRenderPeriodTab() {
+  const keyFn = npsCurrentPeriod === 'week'
+    ? d => { const dt=new Date(d.submittedAt); const day=dt.getDay(); const diff=dt.getDate()-day+(day===0?-6:1); const m=new Date(dt.setDate(diff)); return fmtDateISO(m); }
+    : d => { const dt=d.submittedAt; return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); };
+
+  const byPeriod = npsGroupBy(npsFiltered.filter(d=>d.submittedAt), keyFn);
+  const sortedKeys = Object.keys(byPeriod).sort();
+  const labels = sortedKeys.map(k => npsCurrentPeriod==='week' ? k.slice(5)+' 주' : k);
+
+  // 배포 기록을 키에 매핑
+  const deployAtKey = {};
+  getNotes().sort((a,b)=>a.date<b.date?-1:1).forEach(note => {
+    const nd = new Date(note.date + 'T00:00:00');
+    const nk = npsCurrentPeriod === 'month' ? getMonthKey(nd) : keyFn({submittedAt: nd});
+    const past = sortedKeys.filter(k => k <= nk);
+    const target = past.length ? past[past.length-1] : null;
+    if (target) { if (!deployAtKey[target]) deployAtKey[target] = []; deployAtKey[target].push(note.title); }
+  });
+
+  const deployPlugin = {
+    id: 'npsDeployLines',
+    afterDraw(chart) {
+      const { ctx, scales } = chart;
+      const x = scales.x, y = scales.y || Object.values(scales).find(s=>s.axis==='y');
+      if (!x || !y) return;
+      sortedKeys.forEach((k, i) => {
+        if (!deployAtKey[k]) return;
+        const xPos = x.getPixelForValue(i);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(249,115,22,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.moveTo(xPos, y.top); ctx.lineTo(xPos, y.bottom); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.translate(xPos+10, y.bottom-8);
+        ctx.rotate(-Math.PI/2);
+        ctx.fillStyle = 'rgba(249,115,22,0.9)';
+        ctx.font = 'bold 11px Pretendard,sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🚀 '+deployAtKey[k].join(' / '), 0, 0);
+        ctx.restore();
+      });
+    }
+  };
+
+  npsDestroyChart('perNps');
+  npsCharts.perNps = new Chart(document.getElementById('nps-chart-period-nps'), {
+    type:'line', plugins:[deployPlugin],
+    data:{labels, datasets:[{label:'NPS', data:sortedKeys.map(k=>npsCalcNPS(byPeriod[k])),
+      borderColor:NPS_COLORS.primary, backgroundColor:NPS_COLORS.primary+'20', fill:true, tension:.3, pointRadius:4}]},
+    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:-100,max:100}}}
+  });
+
+  npsDestroyChart('perSat');
+  npsCharts.perSat = new Chart(document.getElementById('nps-chart-period-sat'), {
+    type:'line', plugins:[deployPlugin],
+    data:{labels, datasets:[{label:'만족도', data:sortedKeys.map(k=>+npsCalcAvg(byPeriod[k],'satisfaction').toFixed(1)),
+      borderColor:'#06B6D4', backgroundColor:'#06B6D420', fill:true, tension:.3, pointRadius:4}]},
+    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:0,max:5}}}
+  });
+
+  npsDestroyChart('perCount');
+  npsCharts.perCount = new Chart(document.getElementById('nps-chart-period-count'), {
+    type:'bar', plugins:[deployPlugin],
+    data:{labels, datasets:[{label:'응답 수', data:sortedKeys.map(k=>byPeriod[k].length),
+      backgroundColor:NPS_COLORS.primaryLight, borderRadius:4}]},
+    options:{responsive:true, plugins:{legend:{display:false}}}
+  });
+
+  npsDestroyChart('perDist');
+  npsCharts.perDist = new Chart(document.getElementById('nps-chart-period-dist'), {
+    type:'bar', plugins:[deployPlugin],
+    data:{labels, datasets:[
+      {label:'Promoter', data:sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Promoter').length), backgroundColor:NPS_COLORS.promoter},
+      {label:'Passive',  data:sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Passive').length),  backgroundColor:NPS_COLORS.passive},
+      {label:'Detractor',data:sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Detractor').length),backgroundColor:NPS_COLORS.detractor}
+    ]},
+    options:{responsive:true, scales:{x:{stacked:true},y:{stacked:true}}}
+  });
+}
+
+function npsRenderAgeTab() {
+  const byAge = npsGroupBy(npsFiltered, d => d.ageGroup);
+  const ageOrder = ['비시니어 (30대 이하)','시니어 (40+)','기타'];
+  const keys = ageOrder.filter(k=>byAge[k]);
+
+  npsDestroyChart('ageNps');
+  npsCharts.ageNps = new Chart(document.getElementById('nps-chart-age-nps'), {
+    type:'bar', data:{labels:keys, datasets:[{label:'NPS', data:keys.map(k=>npsCalcNPS(byAge[k])),
+      backgroundColor:keys.map(k=>{const n=npsCalcNPS(byAge[k]);return n>=30?NPS_COLORS.promoter:n>=0?NPS_COLORS.passive:NPS_COLORS.detractor;}), borderRadius:4}]},
+    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:-100,max:100}}}
+  });
+
+  npsDestroyChart('ageSat');
+  npsCharts.ageSat = new Chart(document.getElementById('nps-chart-age-sat'), {
+    type:'bar', data:{labels:keys, datasets:[{label:'만족도', data:keys.map(k=>+npsCalcAvg(byAge[k],'satisfaction').toFixed(1)),
+      backgroundColor:'#06B6D4', borderRadius:4}]},
+    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:0,max:5}}}
+  });
+
+  npsDestroyChart('ageDist');
+  npsCharts.ageDist = new Chart(document.getElementById('nps-chart-age-dist'), {
+    type:'bar', data:{labels:keys, datasets:[
+      {label:'Promoter', data:keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Promoter').length), backgroundColor:NPS_COLORS.promoter},
+      {label:'Passive',  data:keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Passive').length),  backgroundColor:NPS_COLORS.passive},
+      {label:'Detractor',data:keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Detractor').length),backgroundColor:NPS_COLORS.detractor}
+    ]},
+    options:{responsive:true, scales:{x:{stacked:true},y:{stacked:true}}}
+  });
+}
+
+function npsRenderFactorsTab() {
+  const freqMap = {};
+  npsFiltered.forEach(d => d.factors.forEach(f => { freqMap[f]=(freqMap[f]||0)+1; }));
+  const freqEntries = Object.entries(freqMap).sort((a,b)=>b[1]-a[1]);
+  const fLabels = freqEntries.map(([k])=>NPS_FACTOR_LABELS[k]||k);
+
+  npsDestroyChart('facFreq');
+  npsCharts.facFreq = new Chart(document.getElementById('nps-chart-factors-freq'), {
+    type:'bar', data:{labels:fLabels, datasets:[{label:'선택 횟수', data:freqEntries.map(([,v])=>v),
+      backgroundColor:NPS_COLORS.palette.slice(0,fLabels.length), borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}}}
+  });
+
+  const factorNps = {};
+  freqEntries.forEach(([k]) => { factorNps[k] = npsCalcNPS(npsFiltered.filter(d=>d.factors.includes(k))); });
+
+  npsDestroyChart('facNps');
+  npsCharts.facNps = new Chart(document.getElementById('nps-chart-factors-nps'), {
+    type:'bar', data:{labels:fLabels, datasets:[{label:'NPS', data:freqEntries.map(([k])=>factorNps[k]),
+      backgroundColor:freqEntries.map(([k])=>factorNps[k]>=30?NPS_COLORS.promoter:factorNps[k]>=0?NPS_COLORS.passive:NPS_COLORS.detractor), borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:-100,max:100}}}
+  });
+
+  const byProd = npsGroupBy(npsFiltered, d=>d.product);
+  const topProds = Object.entries(byProd).sort((a,b)=>b[1].length-a[1].length).slice(0,10);
+  let html = '<table class="nps-table" style="table-layout:fixed;width:100%;"><thead><tr><th style="width:35%;text-align:left;">상품명</th><th style="width:8%;text-align:left;">응답수</th><th style="width:19%;text-align:left;">Top 1</th><th style="width:19%;text-align:left;">Top 2</th><th style="width:19%;text-align:left;">Top 3</th></tr></thead><tbody>';
+  topProds.forEach(([name,rows]) => {
+    const fm={};
+    rows.forEach(d=>d.factors.forEach(f=>{fm[f]=(fm[f]||0)+1;}));
+    const top3=Object.entries(fm).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const cells=top3.map(([k,v])=>`${NPS_FACTOR_LABELS[k]||k} (${v})`);
+    while(cells.length<3) cells.push('-');
+    html+=`<tr><td title="${name}" style="text-align:left;">${npsTrunc(name,30)}</td><td style="text-align:left;">${rows.length}</td><td style="text-align:left;">${cells[0]}</td><td style="text-align:left;">${cells[1]}</td><td style="text-align:left;">${cells[2]}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  const wrap = document.getElementById('nps-factors-table');
+  if (wrap) wrap.innerHTML = html;
+}
+
+function npsRenderAll() {
+  npsRenderKPIs();
+  npsRenderProductTab();
+  npsRenderPeriodTab();
+  npsRenderAgeTab();
+  npsRenderFactorsTab();
+}
+
+async function renderNpsTab() {
+  if (npsRawData === null) {
+    const ok = await npsLoadData();
+    if (!ok) return;
+    const dates = npsRawData.map(d=>d.submittedAt).filter(Boolean);
+    if (dates.length) {
+      document.getElementById('nps-date-from').value = fmtDateISO(new Date(Math.min(...dates)));
+      document.getElementById('nps-date-to').value   = fmtDateISO(new Date(Math.max(...dates)));
+    }
+    npsBuildDropdowns();
+  }
+  npsApplyFilters();
+}
+
+async function npsForceRefresh() {
+  npsRawData = null;
+  await renderNpsTab();
 }
 
 // ── Main deploy analysis render ──

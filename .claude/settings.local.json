@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head -3 \"c:/Users/팀스파르타/Leadtime/[SC_수강경험] 주요 지표 대시보드 \\(작업 중\\) - 이수시간Raw.csv\")",
+      "Bash(npm --version)",
+      "Bash(gh --version)",
+      "Bash(git --version)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}

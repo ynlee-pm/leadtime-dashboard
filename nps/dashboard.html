@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NPS 대시보드 — 수강경험 주요 지표</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+:root {
+  --primary: #4F46E5;
+  --primary-light: #818CF8;
+  --bg: #F1F5F9;
+  --card: #FFFFFF;
+  --text: #1E293B;
+  --text-muted: #64748B;
+  --border: #E2E8F0;
+  --green: #10B981;
+  --amber: #F59E0B;
+  --red: #EF4444;
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI','Malgun Gothic',sans-serif; background:var(--bg); color:var(--text); }
+
+/* Header */
+.header { background:var(--primary); color:#fff; padding:20px 32px; display:flex; align-items:center; gap:16px; }
+.header h1 { font-size:22px; font-weight:700; }
+.header span { font-size:13px; opacity:.8; }
+
+/* Filter Bar */
+.filter-bar { background:var(--card); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+.filter-bar label { font-size:13px; color:var(--text-muted); font-weight:600; }
+.filter-bar select, .filter-bar input[type="date"] {
+  padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;
+  background:#fff; color:var(--text); min-width:140px;
+}
+.filter-bar button {
+  padding:6px 16px; border:none; border-radius:6px; font-size:13px; cursor:pointer;
+  background:var(--primary); color:#fff; font-weight:600;
+}
+.filter-bar button:hover { background:var(--primary-light); }
+.filter-bar button.reset { background:#E2E8F0; color:var(--text); }
+
+/* KPI Cards */
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; padding:20px 32px; }
+.kpi-card {
+  background:var(--card); border-radius:var(--radius); padding:20px 24px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.kpi-card .label { font-size:13px; color:var(--text-muted); font-weight:600; margin-bottom:6px; }
+.kpi-card .value { font-size:32px; font-weight:800; }
+.kpi-card .sub { font-size:12px; color:var(--text-muted); margin-top:4px; }
+.kpi-card .value.green { color:var(--green); }
+.kpi-card .value.amber { color:var(--amber); }
+.kpi-card .value.red { color:var(--red); }
+
+/* Tabs */
+.tabs { display:flex; gap:0; padding:0 32px; background:var(--card); border-bottom:2px solid var(--border); }
+.tab-btn {
+  padding:12px 24px; font-size:14px; font-weight:600; cursor:pointer;
+  border:none; background:transparent; color:var(--text-muted); border-bottom:2px solid transparent;
+  margin-bottom:-2px; transition:all .15s;
+}
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+/* Tab Content */
+.tab-panels { padding:20px 32px; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+.chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+.chart-card {
+  background:var(--card); border-radius:var(--radius); padding:20px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.chart-card h3 { font-size:15px; margin-bottom:14px; color:var(--text); }
+.chart-card.full { grid-column:1/-1; }
+.chart-card canvas { max-height:400px; }
+
+/* Period Toggle */
+.period-toggle { display:flex; gap:4px; margin-bottom:16px; }
+.period-toggle button {
+  padding:6px 16px; border:1px solid var(--border); border-radius:6px;
+  background:#fff; color:var(--text-muted); font-size:13px; cursor:pointer; font-weight:600;
+}
+.period-toggle button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+/* Table */
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th { background:var(--bg); padding:10px 12px; text-align:left; font-weight:700; border-bottom:2px solid var(--border); white-space:nowrap; }
+.data-table td { padding:8px 12px; border-bottom:1px solid var(--border); }
+.data-table tr:hover td { background:#F8FAFC; }
+.nps-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px; }
+.nps-badge.good { background:#D1FAE5; color:#065F46; }
+.nps-badge.ok { background:#FEF3C7; color:#92400E; }
+.nps-badge.bad { background:#FEE2E2; color:#991B1B; }
+
+/* Responsive */
+@media(max-width:900px) {
+  .chart-grid { grid-template-columns:1fr; }
+  .kpi-row { grid-template-columns:repeat(2,1fr); }
+  .filter-bar { gap:8px; }
+}
+@media(max-width:600px) {
+  .kpi-row { grid-template-columns:1fr; }
+  .header { padding:16px; }
+  .filter-bar, .tab-panels { padding:12px 16px; }
+  .tabs { padding:0 16px; overflow-x:auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>NPS 대시보드</h1>
+  <span>수강경험 주요 지표</span>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+  <label>상품</label>
+  <select id="filterProduct"><option value="">전체</option></select>
+  <label>연령대</label>
+  <select id="filterAge"><option value="">전체</option></select>
+  <label>기간</label>
+  <input type="date" id="filterFrom">
+  <span>~</span>
+  <input type="date" id="filterTo">
+  <button onclick="applyFilters()">적용</button>
+  <button class="reset" onclick="resetFilters()">초기화</button>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi-card"><div class="label">총 응답 수</div><div class="value" id="kpiTotal">—</div><div class="sub" id="kpiTotalSub"></div></div>
+  <div class="kpi-card"><div class="label">NPS 점수</div><div class="value" id="kpiNps">—</div><div class="sub" id="kpiNpsSub"></div></div>
+  <div class="kpi-card"><div class="label">평균 만족도</div><div class="value" id="kpiSat">—</div><div class="sub" id="kpiSatSub">/ 5.0</div></div>
+  <div class="kpi-card"><div class="label">추천 비율 (Promoter)</div><div class="value green" id="kpiPromoter">—</div><div class="sub" id="kpiPromoterSub"></div></div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('product')">상품별</button>
+  <button class="tab-btn" onclick="switchTab('period')">기간별</button>
+  <button class="tab-btn" onclick="switchTab('age')">연령대별</button>
+  <button class="tab-btn" onclick="switchTab('factors')">도움 요소</button>
+</div>
+
+<!-- Tab Panels -->
+<div class="tab-panels">
+  <!-- 상품별 -->
+  <div class="tab-panel active" id="panel-product">
+    <div class="chart-grid">
+      <div class="chart-card"><h3>상품별 NPS 점수</h3><canvas id="chartProductNps"></canvas></div>
+      <div class="chart-card"><h3>상품별 평균 만족도</h3><canvas id="chartProductSat"></canvas></div>
+      <div class="chart-card full"><h3>상품별 NPS 분포 (Promoter / Passive / Detractor)</h3><canvas id="chartProductDist"></canvas></div>
+      <div class="chart-card full"><h3>상품별 상세</h3><div style="overflow-x:auto" id="productTableWrap"></div></div>
+    </div>
+  </div>
+
+  <!-- 기간별 -->
+  <div class="tab-panel" id="panel-period">
+    <div class="period-toggle">
+      <button class="active" onclick="setPeriod('week',this)">주간</button>
+      <button onclick="setPeriod('month',this)">월간</button>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>NPS 추이</h3><canvas id="chartPeriodNps"></canvas></div>
+      <div class="chart-card"><h3>평균 만족도 추이</h3><canvas id="chartPeriodSat"></canvas></div>
+      <div class="chart-card"><h3>응답 수 추이</h3><canvas id="chartPeriodCount"></canvas></div>
+      <div class="chart-card"><h3>NPS 분포 추이</h3><canvas id="chartPeriodDist"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 연령대별 -->
+  <div class="tab-panel" id="panel-age">
+    <div class="chart-grid">
+      <div class="chart-card"><h3>연령대별 NPS 점수</h3><canvas id="chartAgeNps"></canvas></div>
+      <div class="chart-card"><h3>연령대별 평균 만족도</h3><canvas id="chartAgeSat"></canvas></div>
+      <div class="chart-card full"><h3>연령대별 NPS 분포</h3><canvas id="chartAgeDist"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 도움 요소 -->
+  <div class="tab-panel" id="panel-factors">
+    <div class="chart-grid">
+      <div class="chart-card"><h3>도움 요소 선택 빈도</h3><canvas id="chartFactorsFreq"></canvas></div>
+      <div class="chart-card"><h3>도움 요소별 평균 NPS</h3><canvas id="chartFactorsNps"></canvas></div>
+      <div class="chart-card full"><h3>상품별 주요 도움 요소 (Top 3)</h3><div style="overflow-x:auto" id="factorsTableWrap"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CSV DATA (embedded)
+// ============================================================
+const CSV_RAW = `enrollment_id,user_id,product_id,상품명,course_start_date,연령통합,submitted_at,nps_score,nps_bucket,nps_reason,learning_env_satisfaction,helpful_factors_options_json,helpful_factors_custom
+132723,1362194,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,30,26/02/10 20:59,8,Passive,"우선 지피티에 대한 기능설명은 잘해주세요 이부분은 쳇지피티에대한 아예모르시는분 입문하시는분 나이가 좀 있으신분께 도움이 될것같아요!",5,"[""feature_guide""]",
+75758,1312644,102,ChatGPT 300% 활용하기,25/09/29 15:00,50,26/02/10 19:36,9,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""code_snippet"",""basic_practice""]",
+133578,1367034,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,60,26/02/10 15:26,1,Detractor,,1,,
+133677,579030,550,항해 플러스 Lite 백엔드 코스 9주차- 대용량 트래픽&데이터 처리4,25/10/14 20:38,2020,26/02/10 15:06,8,Passive,,4,"[""study_material"",""feature_guide""]",
+133718,1367207,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/02/09 15:00,20,26/02/10 14:27,6,Detractor,,3,,
+132669,1363391,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,30,26/02/10 13:45,6,Detractor,,4,"[""study_material""]",
+133561,1006135,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/02/09 15:00,50,26/02/10 13:45,9,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""puzzle"",""basic_practice"",""code_snippet""]",
+132259,1357501,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,50,26/02/10 13:41,10,Promoter,,5,"[""study_material"",""feature_guide"",""summary_note"",""basic_practice"",""custom_helpful"",""ai_chatbot""]",기본이 좋아요
+133104,1323168,132,AI가 처음이어도 쉽게 배우는 생성형 AI A to Z,26/02/09 15:00,30,26/02/10 13:41,3,Detractor,"코드 시작 20분 만에 코드오류로 강의 진행 불가능한점 그리고 코드를 하나도 모르는 사람이라는 가정으로 설명을 해야되는데 임베디드 공학과를 나온 저도 이해가 어려움",3,,
+133780,1357081,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,40,26/02/10 12:39,8,Passive,,5,"[""feature_guide""]",
+105174,1342938,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,25/12/15 15:00,60,26/02/10 12:36,10,Promoter,,5,"[""study_material"",""summary_note""]",
+131783,1364184,25,1시간 만에 달려라 르탄이 웹 게임 만들기!,26/01/31 03:58,30,26/02/10 12:25,3,Detractor,,5,"[""study_material""]",
+133950,1314043,455,항해 플러스 Lite 백엔드 코스 5주차- 데이터베이스 2,25/10/14 15:00,20,26/02/10 12:22,10,Promoter,,5,"[""ai_chatbot"",""study_material"",""summary_note"",""feature_guide""]",
+133857,1362774,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/02/09 15:00,50,26/02/10 11:14,5,Detractor,,3,"[""study_material""]",
+133782,1366272,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/02/09 15:00,20,26/02/10 11:01,8,Passive,,5,"[""summary_note"",""study_material""]",
+133884,800344,1058,"퀄리티는 높게, 과정은 쉽게! 미드저니로 완성하는 AI 디자인 클래스",26/02/09 15:00,50,26/02/10 10:49,0,Detractor,,1,,
+133955,881690,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 14:37,50,26/02/10 10:47,8,Passive,,5,"[""code_snippet"",""feature_guide"",""study_material""]",
+134021,1317573,137,웹개발이 처음이어도 쉽게 배우는 GPT 웹개발,26/02/09 15:00,60,26/02/10 10:38,8,Passive,,4,"[""ai_chatbot"",""feature_guide""]",
+133455,1366030,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,50,26/02/10 10:33,8,Passive,,4,"[""study_material"",""ai_chatbot"",""summary_note"",""feature_guide""]",
+133690,1350630,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/08 16:51,60,26/02/10 10:29,10,Promoter,,5,"[""study_material"",""summary_note"",""code_snippet""]",
+133956,1163393,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/09 14:37,30,26/02/10 10:29,6,Detractor,,4,"[""ai_chatbot""]",
+132667,1365316,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,50,26/02/10 10:27,6,Detractor,,4,"[""feature_guide""]",
+132960,1364713,328,초고속 승진 비결! AI로 완성하는 PPT 제작 스터디,26/02/09 15:00,50,26/02/10 10:27,10,Promoter,,5,"[""summary_note"",""study_material""]",
+133126,684124,125,노코드로 수익형 AI 앱 만들기,26/02/09 15:00,40,26/02/10 10:12,8,Passive,"강사님께서 강의를 너무 잘 해주시는데 업데이트된 부분에 대해서 영상수정은 어려우시겟지만 교육자료에 추가보완의 아쉬움이 있습니다.",5,"[""study_material""]",
+133867,1368678,1134,"[청년층]신입사원 필수 입문, 실무형 AI - 문서·보고서·업무자동화",26/02/09 15:00,60,26/02/10 08:03,8,Passive,,5,"[""summary_note"",""basic_practice"",""code_snippet""]",
+133837,1366093,1058,"퀄리티는 높게, 과정은 쉽게! 미드저니로 완성하는 AI 디자인 클래스",26/02/09 15:00,30,26/02/10 07:38,10,Promoter,,5,"[""study_material"",""summary_note"",""code_snippet""]",
+132924,1365247,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,50,26/02/10 07:04,9,Promoter,.,4,"[""study_material"",""summary_note"",""ai_chatbot"",""code_snippet""]",
+132756,1364557,1134,"[청년층]신입사원 필수 입문, 실무형 AI - 문서·보고서·업무자동화",26/02/09 15:00,40,26/02/10 05:49,8,Passive,,5,"[""feature_guide"",""study_material""]",
+133728,1367436,1058,"퀄리티는 높게, 과정은 쉽게! 미드저니로 완성하는 AI 디자인 클래스",26/02/09 15:00,20,26/02/10 05:42,5,Detractor,강의의 내용이 평이했음,3,"[""feature_guide""]",
+133138,1291658,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,50,26/02/10 05:27,7,Passive,,4,,
+123627,1342789,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/19 15:00,40,26/02/10 04:56,2,Detractor,,5,"[""feature_guide""]",
+129836,1100151,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/02 15:00,50,26/02/10 04:52,5,Detractor,,4,"[""study_material"",""summary_note""]",
+132586,1342894,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/02/09 15:00,40,26/02/10 04:47,7,Passive,,4,"[""study_material"",""feature_guide""]",
+133040,1366298,1134,"[청년층]신입사원 필수 입문, 실무형 AI - 문서·보고서·업무자동화",26/02/09 15:00,40,26/02/10 04:05,10,Promoter,,5,"[""feature_guide""]",
+132873,1365815,986,칼퇴를 부르는 AI 엑셀 업무 자동화,26/02/09 15:00,40,26/02/10 03:36,7,Passive,,5,"[""study_material"",""code_snippet""]",
+133817,524146,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 06:14,30,26/02/10 03:01,10,Promoter,,5,"[""feature_guide"",""study_material"",""code_snippet""]",
+133726,1361465,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,70,26/02/10 03:00,10,Promoter,,5,"[""feature_guide""]",
+133127,1362137,1134,"[청년층]신입사원 필수 입문, 실무형 AI - 문서·보고서·업무자동화",26/02/09 15:00,50,26/02/10 02:39,7,Passive,,2,,
+121876,1328037,140,칼퇴를 부르는 AI PPT 업무 자동화,26/01/12 15:00,50,26/02/10 02:16,9,Promoter,"아주 만족스러우나 실습학습안내가 조금 부족? 또는 따라하기 힘들었다",5,"[""code_snippet""]",
+132702,1298041,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/09 15:00,60,26/02/10 01:56,10,Promoter,,5,"[""feature_guide""]",
+123180,1342645,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/19 15:00,50,26/02/10 01:47,10,Promoter,,5,"[""feature_guide"",""code_snippet"",""summary_note""]",
+124513,1342645,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/19 15:00,50,26/02/10 01:46,10,Promoter,,5,"[""feature_guide"",""summary_note""]",
+132212,1361690,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/02 15:00,50,26/02/10 00:19,10,Promoter,"이해하기쉽게 설명해줘요.자세히 알려주고 튜너님 너무감사합니다.",5,"[""study_material"",""feature_guide"",""ai_chatbot""]",
+133948,1366799,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 12:59,30,26/02/09 14:53,9,Promoter,,4,"[""feature_guide""]",
+133952,1368955,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 13:54,50,26/02/09 14:12,10,Promoter,굿,5,,
+57848,1296199,102,ChatGPT 300% 활용하기,25/07/28 15:00,50,26/02/09 12:36,9,Promoter,,4,"[""study_material"",""summary_note"",""feature_guide"",""basic_practice"",""code_snippet""]",
+133617,1367271,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/07 16:11,50,26/02/09 12:29,10,Promoter,,5,"[""feature_guide"",""study_material""]",
+133914,1356669,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/09 10:48,50,26/02/09 12:19,9,Promoter,,5,"[""study_material""]",
+129703,1343607,1057,PM/PO 취업을 위한 실무 완전 정복 클래스,26/01/26 15:00,30,26/02/09 12:15,6,Detractor,,5,"[""summary_note""]",
+133926,1364184,41,디자이너 취업 포트폴리오의 모든 것,26/02/09 11:14,30,26/02/09 11:40,4,Detractor,,3,,
+133921,1364626,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 11:06,50,26/02/09 11:38,7,Passive,,4,"[""code_snippet""]",
+115242,1329391,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/05 15:00,50,26/02/09 11:29,7,Passive,좋은강의 감사합니다,3,,
+122805,1075483,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/12 15:00,50,26/02/09 11:06,7,Passive,,5,"[""feature_guide""]",
+133904,1355586,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/09 09:37,50,26/02/09 10:21,7,Passive,,5,,
+130664,1358828,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/02/02 15:00,40,26/02/09 10:08,10,Promoter,알기 쉬운 내용을 쉽게 설명,5,"[""code_snippet""]",
+133868,1363823,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/09 08:11,30,26/02/09 08:36,7,Passive,,5,"[""code_snippet""]",
+116097,1351326,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/05 15:00,40,26/02/09 07:34,8,Passive,"강사님이 차분한 목소리로 차근차근 알려주셔서 이해하는데 도움이 많이 되서 추천하고 싶습니다",4,"[""study_material"",""custom_helpful""]",문의하기
+111691,1345818,102,ChatGPT 300% 활용하기,25/12/29 15:00,50,26/02/09 02:29,10,Promoter,,5,"[""code_snippet""]",
+81880,1320898,102,ChatGPT 300% 활용하기,25/10/20 15:00,60,26/02/09 01:23,5,Detractor,이번 강의는 내용이 너무 오래되었습니다.,4,"[""summary_note"",""code_snippet""]",
+99653,1323682,1040,[기획전] 처음 만나는 AI 영상 · 이미지 제작 왕초보 클래스,25/12/01 15:00,50,26/02/09 00:01,6,Detractor,,4,"[""puzzle"",""feature_guide""]",
+85780,1268009,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,25/10/27 15:00,60,26/02/08 21:07,10,Promoter,,5,"[""study_material""]",
+133668,671400,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/08 13:09,40,26/02/08 17:21,8,Passive,,5,,
+116608,967717,411,항해 플러스 Lite 백엔드 코스 3주차- 서버구축 2,25/11/03 14:39,30,26/02/08 16:08,7,Passive,,4,"[""study_material""]",
+56917,1295607,140,칼퇴를 부르는 AI PPT 업무 자동화,25/07/21 15:00,40,26/02/08 14:35,8,Passive,기본기 쌓기에 좋음,5,"[""study_material""]",
+133567,1366988,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/07 01:27,50,26/02/08 14:24,5,Detractor,,2,,
+122594,1353879,129,GA4와 SQL로 데이터 마케팅 한번에 끝내기,26/01/12 15:00,30,26/02/08 12:53,3,Detractor,,3,"[""study_material""]",
+118999,1350153,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/12 15:00,50,26/02/08 11:32,10,Promoter,"알찬수업과 관리자들의 격려로 완강이 가능했습니다 감사합니다",5,"[""study_material"",""code_snippet"",""feature_guide"",""basic_practice"",""puzzle"",""summary_note""]",
+121918,1354333,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/12 15:00,50,26/02/08 10:15,9,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot""]",
+133655,684124,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/08 08:09,40,26/02/08 10:13,8,Passive,,5,"[""summary_note""]",
+116946,1017080,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/05 15:00,50,26/02/08 09:59,9,Promoter,,5,"[""study_material"",""code_snippet"",""summary_note""]",
+133657,1180110,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/08 08:21,60,26/02/08 09:10,10,Promoter,강의내용이 좋았습니다.,5,"[""study_material"",""feature_guide"",""code_snippet"",""basic_practice"",""summary_note""]",
+121988,1354451,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/12 15:00,50,26/02/08 09:06,8,Passive,,4,"[""study_material"",""summary_note"",""feature_guide"",""basic_practice""]",
+94407,1268009,1071,[특별제공] 오가닉님 - AI 블로그 수익화 강의,25/11/19 15:00,60,26/02/08 09:01,10,Promoter,,5,"[""study_material""]",
+131387,1357415,1218,4주만에 월급 버는 AI숏폼 올인원 패키지,26/02/03 15:00,50,26/02/08 08:18,10,Promoter,몰랐던것들을 알게 되었음,5,"[""study_material"",""ai_chatbot"",""code_snippet"",""summary_note"",""basic_practice"",""custom_helpful"",""feature_guide"",""puzzle""]","인스타,유튜브, 동영상제작"
+114542,1348400,325,처음 배우는 GPT 실무 활용 300% 스터디,25/12/29 15:00,50,26/02/08 07:56,8,Passive,,5,"[""code_snippet""]",
+122576,1354533,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/12 15:00,40,26/02/08 07:18,9,Promoter,"과제를 함으로써 내가 직접 실습을 할 수 있도록 도움을 주는 수업이었습니다. 그리고 강의 내용도 알차고 재미있었습니다.",5,"[""code_snippet""]",
+123511,1295524,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/19 15:00,70,26/02/08 04:31,10,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""puzzle"",""code_snippet"",""basic_practice""]",
+129709,860088,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/26 15:00,60,26/02/08 02:16,10,Promoter,,5,"[""feature_guide"",""code_snippet""]",
+133635,1291891,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/08 01:40,60,26/02/08 02:16,8,Passive,"글씨가 너무 작게 보여요.. 화면 확대/축소가 가능하면 만점 입니다",4,"[""study_material"",""feature_guide"",""code_snippet"",""ai_chatbot"",""summary_note""]",
+98852,1322708,1074,AI 블로그 수익화 챌린지(3기),25/12/02 15:00,40,26/02/07 22:04,9,Promoter,,4,"[""study_material"",""summary_note""]",
+133620,1367296,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/07 19:14,50,26/02/07 19:56,5,Detractor,뭔가 아쉬움,2,,
+133551,1362653,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/06 20:53,40,26/02/07 15:14,10,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""basic_practice"",""code_snippet"",""puzzle"",""custom_helpful""]",아주좋아요
+133554,1362653,1069,AI 유튜브 숏폼 수익화 무료강의,26/02/06 21:12,40,26/02/07 14:53,10,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""puzzle"",""code_snippet"",""basic_practice"",""custom_helpful""]",감사합니다
+125567,987605,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/19 15:00,50,26/02/07 13:56,7,Passive,^^,5,"[""feature_guide""]",
+101300,810203,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,25/12/08 15:00,70,26/02/07 13:38,8,Passive,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""code_snippet"",""basic_practice""]",
+133608,1221538,1069,AI 유튜브 숏폼 수익화 무료강의,26/02/07 12:29,40,26/02/07 12:32,0,Detractor,,1,,
+122578,1342938,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/12 15:00,60,26/02/07 11:58,10,Promoter,,5,"[""feature_guide"",""ai_chatbot""]",
+133599,1307296,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/07 10:50,60,26/02/07 11:17,10,Promoter,,5,"[""study_material"",""summary_note"",""ai_chatbot"",""feature_guide"",""code_snippet"",""basic_practice""]",
+116081,1351437,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/05 15:00,60,26/02/07 09:22,8,Passive,,5,"[""study_material"",""basic_practice"",""ai_chatbot""]",
+131722,1275409,455,항해 플러스 Lite 백엔드 코스 5주차- 데이터베이스 2,25/10/14 15:00,20,26/02/07 08:25,5,Detractor,,4,"[""study_material"",""summary_note""]",
+115403,973241,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/05 15:00,50,26/02/07 06:36,7,Passive,,5,"[""code_snippet"",""study_material"",""feature_guide""]",
+93117,533101,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,25/11/17 15:00,50,26/02/07 06:12,9,Promoter,,5,"[""study_material"",""feature_guide""]",
+133573,1366995,1069,AI 유튜브 숏폼 수익화 무료강의,26/02/07 03:16,40,26/02/07 03:35,6,Detractor,,3,"[""code_snippet""]",
+133569,1366995,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/07 01:53,40,26/02/07 03:19,10,Promoter,,5,"[""study_material""]",
+117412,949041,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/12 15:00,40,26/02/06 23:18,8,Passive,,4,"[""study_material""]",
+117546,1348599,140,칼퇴를 부르는 AI PPT 업무 자동화,26/01/12 15:00,30,26/02/06 16:57,10,Promoter,,5,"[""code_snippet"",""study_material"",""summary_note""]",
+133373,1366452,842,"망한 사진, AI로 부활시키기 – 나노바나나(Gemini) 활용법",26/02/06 03:49,50,26/02/06 15:23,10,Promoter,,5,"[""study_material""]",
+92006,1323073,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,25/11/17 15:00,60,26/02/06 14:40,10,Promoter,,5,"[""study_material""]",
+122605,1355115,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/12 15:00,50,26/02/06 14:38,9,Promoter,"시간, 장소 제한없이 강의를 들을 수 있고 강사님의 솔직하고 전문적인 강의 내용이 마음에 듭니다.",5,"[""study_material"",""summary_note"",""ai_chatbot""]",
+133511,1366754,9,오늘 배워 내일 바로 써먹는 ChatGPT 활용법,26/02/06 09:48,50,26/02/06 10:29,9,Promoter,"예제로 설명해 주는 부분이 굿이었습니다. 감사합니다.",5,"[""study_material""]",
+116983,1351812,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/05 15:00,30,26/02/06 10:20,3,Detractor,,5,"[""feature_guide""]",
+105535,1343998,325,처음 배우는 GPT 실무 활용 300% 스터디,25/12/15 15:00,40,26/02/06 09:38,10,Promoter,"활용도가 높은거 같아요. 이왕에 쓸꺼라면 스마트하게 사용할수 있을꺼 같아서 지인들에게도 추천했어요.",5,"[""study_material"",""code_snippet""]",
+114330,1340939,986,칼퇴를 부르는 AI 엑셀 업무 자동화,25/12/29 15:00,40,26/02/06 09:03,5,Detractor,"강의난이도가 변별력이 부족해보여요 초보자들에게는 어려운수업이었고 선생님 말속도나 이해가가기 어려운 강의스킬이 많아서 2번이상 봐야 알수있는 내용이많았습니다",3,"[""summary_note""]",
+122706,1354144,984,클릭으로 완성하는 AI 영상/이미지 제작 실습 클래스,26/01/12 15:00,50,26/02/06 07:57,9,Promoter,,5,"[""study_material"",""feature_guide""]",
+78274,1318095,325,처음 배우는 GPT 실무 활용 300% 스터디,25/10/13 15:00,50,26/02/06 07:28,7,Passive,,4,"[""ai_chatbot""]",
+115577,1345743,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/05 15:00,50,26/02/06 06:59,9,Promoter,"모든게 처음이라 잘은 모르지만 10년전 cafe24 상세페이지 만드는 법을 배우고도 장사경험이 없어 아무것도 할 수 없었던 기억이 납니다. 블로거는 할 수 있겠네요",5,"[""study_material"",""summary_note""]",
+123789,1356154,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/19 15:00,40,26/02/06 06:47,8,Passive,"수강자의 수준에 따른 편차가 좀 있지 않을까 싶네요. 그럼에도 나름의 퀄리티가 있고 기본기를 익히기에는 좋은 강의라고 생각됩니다.",4,"[""basic_practice"",""feature_guide""]",
+115400,1342904,985,AI 네이버 블로그 수익화 클래스 : 키워드 발굴부터 자동화까지,26/01/05 15:00,50,26/02/06 04:05,10,Promoter,,5,"[""study_material""]",`;
+
+// ============================================================
+// DATA PARSING & HELPERS
+// ============================================================
+const parsed = Papa.parse(CSV_RAW, { header: true, skipEmptyLines: true });
+let allData = parsed.data.map(r => {
+  const age = parseInt(r['연령통합']);
+  let ageGroup;
+  if (age >= 10 && age <= 79) ageGroup = age + '대';
+  else ageGroup = '기타';
+  let factors = [];
+  try { factors = JSON.parse(r.helpful_factors_options_json || '[]'); } catch(e) {}
+  return {
+    product: (r['상품명'] || '').trim(),
+    productId: r.product_id,
+    age: age,
+    ageGroup: ageGroup,
+    submittedAt: parseDate(r.submitted_at),
+    npsScore: parseInt(r.nps_score),
+    npsBucket: r.nps_bucket,
+    npsReason: r.nps_reason || '',
+    satisfaction: parseInt(r.learning_env_satisfaction),
+    factors: factors,
+    factorsCustom: r.helpful_factors_custom || ''
+  };
+}).filter(r => r.product && !isNaN(r.npsScore));
+
+function parseDate(s) {
+  if (!s) return null;
+  const parts = s.trim().split(' ');
+  const dParts = parts[0].split('/');
+  const year = 2000 + parseInt(dParts[0]);
+  const month = parseInt(dParts[1]) - 1;
+  const day = parseInt(dParts[2]);
+  return new Date(year, month, day);
+}
+
+const FACTOR_LABELS = {
+  study_material: '학습 자료',
+  summary_note: '요약 노트',
+  ai_chatbot: 'AI 챗봇',
+  feature_guide: '기능 가이드',
+  code_snippet: '코드 스니펫',
+  basic_practice: '기초 실습',
+  puzzle: '퍼즐/퀴즈',
+  custom_helpful: '기타'
+};
+
+const COLORS = {
+  promoter: '#10B981',
+  passive: '#F59E0B',
+  detractor: '#EF4444',
+  primary: '#4F46E5',
+  primaryLight: '#818CF8',
+  palette: ['#4F46E5','#06B6D4','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#14B8A6']
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let filteredData = [...allData];
+let currentPeriod = 'week';
+const charts = {};
+
+// ============================================================
+// FILTER LOGIC
+// ============================================================
+function initFilters() {
+  const products = [...new Set(allData.map(d => d.product))].sort();
+  const ages = [...new Set(allData.map(d => d.ageGroup))].sort((a,b) => {
+    const na = parseInt(a), nb = parseInt(b);
+    if (isNaN(na)) return 1;
+    if (isNaN(nb)) return -1;
+    return na - nb;
+  });
+  const prodSel = document.getElementById('filterProduct');
+  products.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.length > 25 ? p.slice(0,25)+'…' : p; o.title = p; prodSel.appendChild(o); });
+  const ageSel = document.getElementById('filterAge');
+  ages.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; ageSel.appendChild(o); });
+
+  const dates = allData.map(d => d.submittedAt).filter(Boolean);
+  const minDate = new Date(Math.min(...dates));
+  const maxDate = new Date(Math.max(...dates));
+  document.getElementById('filterFrom').value = formatDateInput(minDate);
+  document.getElementById('filterTo').value = formatDateInput(maxDate);
+}
+
+function formatDateInput(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function applyFilters() {
+  const prod = document.getElementById('filterProduct').value;
+  const age = document.getElementById('filterAge').value;
+  const from = document.getElementById('filterFrom').value ? new Date(document.getElementById('filterFrom').value) : null;
+  const to = document.getElementById('filterTo').value ? new Date(document.getElementById('filterTo').value + 'T23:59:59') : null;
+
+  filteredData = allData.filter(d => {
+    if (prod && d.product !== prod) return false;
+    if (age && d.ageGroup !== age) return false;
+    if (from && d.submittedAt < from) return false;
+    if (to && d.submittedAt > to) return false;
+    return true;
+  });
+  updateAll();
+}
+
+function resetFilters() {
+  document.getElementById('filterProduct').value = '';
+  document.getElementById('filterAge').value = '';
+  const dates = allData.map(d => d.submittedAt).filter(Boolean);
+  document.getElementById('filterFrom').value = formatDateInput(new Date(Math.min(...dates)));
+  document.getElementById('filterTo').value = formatDateInput(new Date(Math.max(...dates)));
+  filteredData = [...allData];
+  updateAll();
+}
+
+// ============================================================
+// CALCULATIONS
+// ============================================================
+function calcNPS(data) {
+  if (!data.length) return 0;
+  const p = data.filter(d => d.npsBucket === 'Promoter').length;
+  const d = data.filter(d => d.npsBucket === 'Detractor').length;
+  return Math.round(((p - d) / data.length) * 100);
+}
+
+function calcAvg(data, key) {
+  const vals = data.map(d => d[key]).filter(v => !isNaN(v));
+  return vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length) : 0;
+}
+
+function groupBy(data, keyFn) {
+  const m = {};
+  data.forEach(d => { const k = keyFn(d); (m[k] = m[k]||[]).push(d); });
+  return m;
+}
+
+function getWeekKey(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(dt.setDate(diff));
+  return formatDateInput(mon);
+}
+
+function getMonthKey(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// ============================================================
+// KPI UPDATE
+// ============================================================
+function updateKPIs() {
+  const n = filteredData.length;
+  const nps = calcNPS(filteredData);
+  const sat = calcAvg(filteredData, 'satisfaction');
+  const pct = n ? Math.round(filteredData.filter(d=>d.npsBucket==='Promoter').length/n*100) : 0;
+
+  document.getElementById('kpiTotal').textContent = n;
+  document.getElementById('kpiTotalSub').textContent = `전체 ${allData.length}건 중`;
+
+  const npsEl = document.getElementById('kpiNps');
+  npsEl.textContent = nps;
+  npsEl.className = 'value ' + (nps >= 30 ? 'green' : nps >= 0 ? 'amber' : 'red');
+
+  const prom = filteredData.filter(d=>d.npsBucket==='Promoter').length;
+  const pass = filteredData.filter(d=>d.npsBucket==='Passive').length;
+  const det = filteredData.filter(d=>d.npsBucket==='Detractor').length;
+  document.getElementById('kpiNpsSub').textContent = `P:${prom} / N:${pass} / D:${det}`;
+
+  document.getElementById('kpiSat').textContent = sat.toFixed(1);
+  document.getElementById('kpiPromoter').textContent = pct + '%';
+  document.getElementById('kpiPromoterSub').textContent = `${prom}명 / ${n}명`;
+}
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', b.textContent.includes(
+    id==='product'?'상품별':id==='period'?'기간별':id==='age'?'연령대별':'도움 요소'
+  )));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-'+id));
+}
+
+// ============================================================
+// CHART HELPERS
+// ============================================================
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+}
+
+function npsBadge(nps) {
+  const cls = nps >= 30 ? 'good' : nps >= 0 ? 'ok' : 'bad';
+  return `<span class="nps-badge ${cls}">${nps}</span>`;
+}
+
+function truncLabel(s, max) {
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+// ============================================================
+// PRODUCT TAB
+// ============================================================
+function updateProductTab() {
+  const byProduct = groupBy(filteredData, d => d.product);
+  const entries = Object.entries(byProduct)
+    .map(([name, rows]) => ({ name, rows, nps: calcNPS(rows), sat: calcAvg(rows,'satisfaction'), count: rows.length }))
+    .sort((a,b) => b.count - a.count);
+
+  const labels = entries.map(e => truncLabel(e.name, 20));
+
+  // NPS Bar
+  destroyChart('productNps');
+  charts.productNps = new Chart(document.getElementById('chartProductNps'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'NPS', data: entries.map(e=>e.nps),
+        backgroundColor: entries.map(e => e.nps >= 30 ? COLORS.promoter : e.nps >= 0 ? COLORS.passive : COLORS.detractor),
+        borderRadius: 4 }]
+    },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:-100,max:100}} }
+  });
+
+  // Satisfaction Bar
+  destroyChart('productSat');
+  charts.productSat = new Chart(document.getElementById('chartProductSat'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: '만족도', data: entries.map(e=>+e.sat.toFixed(1)),
+        backgroundColor: COLORS.primary, borderRadius: 4 }]
+    },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:0,max:5}} }
+  });
+
+  // Stacked Distribution
+  destroyChart('productDist');
+  charts.productDist = new Chart(document.getElementById('chartProductDist'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Promoter', data: entries.map(e => Math.round(e.rows.filter(r=>r.npsBucket==='Promoter').length/e.count*100)), backgroundColor: COLORS.promoter },
+        { label: 'Passive', data: entries.map(e => Math.round(e.rows.filter(r=>r.npsBucket==='Passive').length/e.count*100)), backgroundColor: COLORS.passive },
+        { label: 'Detractor', data: entries.map(e => Math.round(e.rows.filter(r=>r.npsBucket==='Detractor').length/e.count*100)), backgroundColor: COLORS.detractor }
+      ]
+    },
+    options: { indexAxis:'y', responsive:true, scales:{x:{stacked:true,max:100,ticks:{callback:v=>v+'%'}},y:{stacked:true}}, plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}}} }
+  });
+
+  // Table
+  let html = '<table class="data-table"><thead><tr><th>상품명</th><th>응답수</th><th>NPS</th><th>만족도</th><th>Promoter</th><th>Passive</th><th>Detractor</th></tr></thead><tbody>';
+  entries.forEach(e => {
+    const p = e.rows.filter(r=>r.npsBucket==='Promoter').length;
+    const pa = e.rows.filter(r=>r.npsBucket==='Passive').length;
+    const d = e.rows.filter(r=>r.npsBucket==='Detractor').length;
+    html += `<tr><td title="${e.name}">${truncLabel(e.name,35)}</td><td>${e.count}</td><td>${npsBadge(e.nps)}</td><td>${e.sat.toFixed(1)}</td><td>${p} (${Math.round(p/e.count*100)}%)</td><td>${pa} (${Math.round(pa/e.count*100)}%)</td><td>${d} (${Math.round(d/e.count*100)}%)</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('productTableWrap').innerHTML = html;
+}
+
+// ============================================================
+// PERIOD TAB
+// ============================================================
+function setPeriod(p, btn) {
+  currentPeriod = p;
+  document.querySelectorAll('.period-toggle button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  updatePeriodTab();
+}
+
+function updatePeriodTab() {
+  const keyFn = currentPeriod === 'week'
+    ? d => getWeekKey(d.submittedAt)
+    : d => getMonthKey(d.submittedAt);
+
+  const byPeriod = groupBy(filteredData.filter(d=>d.submittedAt), keyFn);
+  const sortedKeys = Object.keys(byPeriod).sort();
+  const labels = sortedKeys.map(k => currentPeriod==='week' ? k.slice(5) + '주' : k);
+
+  // NPS Line
+  destroyChart('periodNps');
+  charts.periodNps = new Chart(document.getElementById('chartPeriodNps'), {
+    type: 'line',
+    data: { labels, datasets: [{ label:'NPS', data: sortedKeys.map(k=>calcNPS(byPeriod[k])),
+      borderColor: COLORS.primary, backgroundColor: COLORS.primary+'20', fill:true, tension:.3, pointRadius:4 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:-100,max:100}} }
+  });
+
+  // Satisfaction Line
+  destroyChart('periodSat');
+  charts.periodSat = new Chart(document.getElementById('chartPeriodSat'), {
+    type: 'line',
+    data: { labels, datasets: [{ label:'만족도', data: sortedKeys.map(k=>+calcAvg(byPeriod[k],'satisfaction').toFixed(1)),
+      borderColor: '#06B6D4', backgroundColor: '#06B6D420', fill:true, tension:.3, pointRadius:4 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:0,max:5}} }
+  });
+
+  // Count Bar
+  destroyChart('periodCount');
+  charts.periodCount = new Chart(document.getElementById('chartPeriodCount'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'응답 수', data: sortedKeys.map(k=>byPeriod[k].length),
+      backgroundColor: COLORS.primaryLight, borderRadius:4 }] },
+    options: { responsive:true, plugins:{legend:{display:false}} }
+  });
+
+  // Stacked Distribution
+  destroyChart('periodDist');
+  charts.periodDist = new Chart(document.getElementById('chartPeriodDist'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Promoter', data: sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Promoter').length), backgroundColor: COLORS.promoter },
+        { label:'Passive', data: sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Passive').length), backgroundColor: COLORS.passive },
+        { label:'Detractor', data: sortedKeys.map(k=>byPeriod[k].filter(d=>d.npsBucket==='Detractor').length), backgroundColor: COLORS.detractor }
+      ]
+    },
+    options: { responsive:true, scales:{x:{stacked:true},y:{stacked:true}} }
+  });
+}
+
+// ============================================================
+// AGE TAB
+// ============================================================
+function updateAgeTab() {
+  const byAge = groupBy(filteredData, d => d.ageGroup);
+  const ageOrder = ['20대','30대','40대','50대','60대','70대','기타'];
+  const keys = ageOrder.filter(k => byAge[k]);
+
+  destroyChart('ageNps');
+  charts.ageNps = new Chart(document.getElementById('chartAgeNps'), {
+    type: 'bar',
+    data: { labels: keys, datasets: [{ label:'NPS', data: keys.map(k=>calcNPS(byAge[k])),
+      backgroundColor: keys.map(k => { const n=calcNPS(byAge[k]); return n>=30?COLORS.promoter:n>=0?COLORS.passive:COLORS.detractor; }),
+      borderRadius:4 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:-100,max:100}} }
+  });
+
+  destroyChart('ageSat');
+  charts.ageSat = new Chart(document.getElementById('chartAgeSat'), {
+    type: 'bar',
+    data: { labels: keys, datasets: [{ label:'만족도', data: keys.map(k=>+calcAvg(byAge[k],'satisfaction').toFixed(1)),
+      backgroundColor: '#06B6D4', borderRadius:4 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{min:0,max:5}} }
+  });
+
+  destroyChart('ageDist');
+  charts.ageDist = new Chart(document.getElementById('chartAgeDist'), {
+    type: 'bar',
+    data: {
+      labels: keys,
+      datasets: [
+        { label:'Promoter', data: keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Promoter').length), backgroundColor: COLORS.promoter },
+        { label:'Passive', data: keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Passive').length), backgroundColor: COLORS.passive },
+        { label:'Detractor', data: keys.map(k=>byAge[k].filter(d=>d.npsBucket==='Detractor').length), backgroundColor: COLORS.detractor }
+      ]
+    },
+    options: { responsive:true, scales:{x:{stacked:true},y:{stacked:true}} }
+  });
+}
+
+// ============================================================
+// FACTORS TAB
+// ============================================================
+function updateFactorsTab() {
+  // Frequency
+  const freqMap = {};
+  filteredData.forEach(d => d.factors.forEach(f => { freqMap[f] = (freqMap[f]||0)+1; }));
+  const freqEntries = Object.entries(freqMap).sort((a,b)=>b[1]-a[1]);
+  const fLabels = freqEntries.map(([k])=> FACTOR_LABELS[k]||k);
+  const fValues = freqEntries.map(([,v])=>v);
+
+  destroyChart('factorsFreq');
+  charts.factorsFreq = new Chart(document.getElementById('chartFactorsFreq'), {
+    type: 'bar',
+    data: { labels: fLabels, datasets: [{ label:'선택 횟수', data: fValues,
+      backgroundColor: COLORS.palette.slice(0, fLabels.length), borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}} }
+  });
+
+  // Avg NPS per factor
+  const factorNps = {};
+  freqEntries.forEach(([k]) => {
+    const rows = filteredData.filter(d => d.factors.includes(k));
+    factorNps[k] = calcNPS(rows);
+  });
+
+  destroyChart('factorsNps');
+  charts.factorsNps = new Chart(document.getElementById('chartFactorsNps'), {
+    type: 'bar',
+    data: { labels: fLabels, datasets: [{ label:'NPS', data: freqEntries.map(([k])=>factorNps[k]),
+      backgroundColor: freqEntries.map(([k]) => factorNps[k]>=30?COLORS.promoter:factorNps[k]>=0?COLORS.passive:COLORS.detractor),
+      borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{min:-100,max:100}} }
+  });
+
+  // Product x Factor table
+  const byProduct = groupBy(filteredData, d => d.product);
+  const topProducts = Object.entries(byProduct).sort((a,b)=>b[1].length-a[1].length).slice(0, 10);
+  let html = '<table class="data-table"><thead><tr><th>상품명</th><th>응답수</th><th>Top 1</th><th>Top 2</th><th>Top 3</th></tr></thead><tbody>';
+  topProducts.forEach(([name, rows]) => {
+    const fm = {};
+    rows.forEach(d => d.factors.forEach(f => { fm[f]=(fm[f]||0)+1; }));
+    const top3 = Object.entries(fm).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const cells = top3.map(([k,v]) => `${FACTOR_LABELS[k]||k} (${v})`);
+    while(cells.length < 3) cells.push('-');
+    html += `<tr><td title="${name}">${truncLabel(name,30)}</td><td>${rows.length}</td><td>${cells[0]}</td><td>${cells[1]}</td><td>${cells[2]}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('factorsTableWrap').innerHTML = html;
+}
+
+// ============================================================
+// MASTER UPDATE
+// ============================================================
+function updateAll() {
+  updateKPIs();
+  updateProductTab();
+  updatePeriodTab();
+  updateAgeTab();
+  updateFactorsTab();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+initFilters();
+updateAll();
+</script>
+</body>
+</html>
