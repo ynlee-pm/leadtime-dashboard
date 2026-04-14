@@ -1001,6 +1001,7 @@ function processRows(rows) {
       enrollId:   c[0].trim(),
       productId:  (c[1] || '').trim(),
       course:     (c[2] || '').trim(),
+      createdAt:  parseDate(c[3]),
       age:        isNaN(age) ? null : age,
       isSenior:   isNaN(age) ? null : age >= 40,
       courseStart, courseEnd,
@@ -3972,7 +3973,18 @@ async function refreshData() {
 
 async function loadData(text) {
   const rows = parseCSV(text);
-  allData = processRows(rows);
+  const raw = processRows(rows);
+
+  // enrollment_id당 created_at 최신 행만 유지 (스냅샷 중복 제거)
+  const latestMap = new Map();
+  raw.forEach(r => {
+    const prev = latestMap.get(r.enrollId);
+    if (!prev || (r.createdAt && (!prev.createdAt || r.createdAt > prev.createdAt))) {
+      latestMap.set(r.enrollId, r);
+    }
+  });
+  allData = [...latestMap.values()];
+
   if (!allData.length) {
     document.getElementById('file-info').textContent = '❌ 파싱 오류 · 형식 확인 필요';
     return;
@@ -3995,7 +4007,7 @@ async function loadData(text) {
   }
 
   document.getElementById('file-info').textContent =
-    `${allData.length.toLocaleString()}행 · ${lastLoaded.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})} 업데이트`;
+    `${allData.length.toLocaleString()}명 (원본 ${raw.length.toLocaleString()}행 → dedup) · ${lastLoaded.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})} 업데이트`;
 
   await Promise.all([loadPriceData(), loadNotesFromAPI()]);
   renderNoteList();
